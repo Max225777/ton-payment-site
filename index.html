@@ -6,445 +6,502 @@
     <title>Обмінник TON на USDT</title>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
+        :root {
+            --primary: #007bff;
+            --secondary: #6c757d;
+            --success: #28a745;
+            --warning: #fdbb2d;
+            --danger: #dc3545;
+            --dark: #1a1a1a;
+            --light: #f8f9fa;
+            --background: #121212;
+            --surface: #1e1e1e;
+            --text: #e0e0e0;
+            --border: #333;
+        }
+        
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
         
         body {
-            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
-            color: #fff;
+            background-color: var(--background);
+            color: var(--text);
             min-height: 100vh;
-            display: flex;
-            padding: 20px;
-        }
-        
-        .container {
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 40px;
-            width: 70%;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            text-align: center;
-            position: relative;
-        }
-        
-        .promo-sidebar {
-            width: 30%;
-            margin-left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            padding: 16px;
             display: flex;
             flex-direction: column;
         }
         
-        .promo-header {
-            background: linear-gradient(135deg, #ff6b6b, #ff9e6b);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            margin-bottom: 25px;
-        }
-        
-        .promo-header h2 {
-            font-size: 1.8rem;
-            margin-bottom: 10px;
-            color: #fff;
-        }
-        
-        .promo-timer {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 25px;
-            text-align: center;
-        }
-        
-        .timer-value {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: #ff9e6b;
-            margin: 10px 0;
-        }
-        
-        .promo-benefits {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 25px;
-        }
-        
-        .benefit-item {
+        .layout {
             display: flex;
-            align-items: center;
-            margin-bottom: 15px;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
         }
         
-        .benefit-icon {
-            width: 30px;
-            height: 30px;
-            background: #fdbb2d;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 15px;
-            flex-shrink: 0;
+        .container, .promo-sidebar {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
         
-        .get-promo-btn {
-            background: linear-gradient(to right, #ff6b6b, #ff9e6b);
-            color: white;
-            border: none;
-            padding: 16px;
-            border-radius: 12px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: auto;
-        }
-        
-        .get-promo-btn:hover {
-            background: linear-gradient(to right, #ff5252, #ff8a50);
-            transform: translateY(-2px);
+        .container {
+            flex: 1;
         }
         
         h1 {
-            font-size: 2.5rem;
-            margin-bottom: 20px;
-            color: #fdbb2d;
+            font-size: 1.75rem;
+            margin-bottom: 16px;
+            color: var(--warning);
+            text-align: center;
         }
         
         .description {
-            font-size: 1.1rem;
-            margin-bottom: 30px;
-            line-height: 1.6;
-            color: #ccc;
+            font-size: 1rem;
+            margin-bottom: 24px;
+            line-height: 1.5;
+            color: var(--text);
+            text-align: center;
+            opacity: 0.8;
         }
         
-        .exchange-container {
-            margin: 30px 0;
-            border: 2px solid #444;
-            border-radius: 15px;
-            padding: 20px;
+        .token-info {
+            margin-bottom: 24px;
+            padding: 16px;
+            border-radius: 12px;
             background: rgba(255, 255, 255, 0.05);
         }
         
+        .token-info h3 {
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+        }
+        
+        .price-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .exchange-container {
+            margin: 24px 0;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+        
         .input-group {
-            margin-bottom: 20px;
-            text-align: left;
+            margin-bottom: 16px;
         }
         
         .input-group label {
             display: block;
             margin-bottom: 8px;
-            font-weight: bold;
-            color: #fdbb2d;
+            font-weight: 500;
+            color: var(--text);
         }
         
         .input-field {
             width: 100%;
-            padding: 15px;
-            border-radius: 12px;
-            border: 2px solid #444;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            font-size: 1.2rem;
-            transition: border-color 0.3s;
+            padding: 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            font-size: 1rem;
         }
         
         .input-field:focus {
             outline: none;
-            border-color: #007bff;
+            border-color: var(--primary);
         }
         
         .conversion-arrow {
-            font-size: 2rem;
-            margin: 15px 0;
-            color: #fdbb2d;
+            text-align: center;
+            margin: 12px 0;
+            color: var(--warning);
+            font-size: 1.5rem;
         }
         
         .discount-badge {
-            background: #ff6b6b;
+            background: var(--success);
             color: white;
-            padding: 5px 10px;
+            padding: 4px 8px;
             border-radius: 20px;
-            font-size: 0.9rem;
-            margin-left: 10px;
+            font-size: 0.8rem;
+            margin-left: 8px;
         }
         
         .button-group {
             display: flex;
             flex-direction: column;
-            gap: 15px;
-            margin: 30px 0;
+            gap: 12px;
+            margin: 24px 0;
         }
         
         button {
-            padding: 16px 32px;
+            padding: 14px 20px;
             border: none;
-            border-radius: 12px;
-            font-size: 1.2rem;
-            font-weight: bold;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
         }
         
         #connect-btn {
-            background: linear-gradient(to right, #007bff, #0056b3);
+            background: var(--primary);
             color: white;
         }
         
-        #connect-btn:hover {
-            background: linear-gradient(to right, #0056b3, #004494);
-            transform: translateY(-2px);
-        }
-        
         #exchange-btn {
-            background: linear-gradient(to right, #28a745, #20c997);
+            background: var(--success);
             color: white;
             display: none;
         }
         
-        #exchange-btn:hover {
-            background: linear-gradient(to right, #218838, #1e7e34);
-            transform: translateY(-2px);
+        button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
         }
         
         button:disabled {
-            background: #6c757d;
+            background: var(--secondary);
             cursor: not-allowed;
             transform: none;
         }
         
-        .wallet-info {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.1);
+        .wallet-info, .status {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
             display: none;
         }
         
-        .status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            display: none;
-        }
-        
-        .success {
-            background: rgba(40, 167, 69, 0.2);
+        .status.success {
+            background: rgba(40, 167, 69, 0.15);
             color: #8aff9b;
         }
         
-        .error {
-            background: rgba(220, 53, 69, 0.2);
+        .status.error {
+            background: rgba(220, 53, 69, 0.15);
             color: #ff8a8a;
         }
         
-        .token-info {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
-        .rate-info {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #ccc;
-        }
-        
-        .price-info {
-            margin-top: 15px;
-            padding: 10px;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
         .steps {
-            margin-top: 30px;
-            text-align: left;
+            margin-top: 24px;
         }
         
         .steps h3 {
-            color: #fdbb2d;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
+            font-size: 1.1rem;
+            color: var(--warning);
         }
         
         .step {
             display: flex;
             align-items: flex-start;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
+            font-size: 0.95rem;
         }
         
         .step-number {
-            background: #007bff;
+            background: var(--primary);
             color: white;
-            width: 30px;
-            height: 30px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 15px;
+            margin-right: 12px;
             flex-shrink: 0;
-        }
-        
-        .step-text {
-            flex: 1;
+            font-size: 0.8rem;
         }
         
         .discount-active {
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-top: 15px;
-            padding: 10px;
-            background: rgba(40, 167, 69, 0.2);
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(40, 167, 69, 0.15);
             border-radius: 8px;
             color: #8aff9b;
+            font-size: 0.9rem;
+        }
+        
+        /* Promo sidebar styles */
+        .promo-header {
+            background: var(--primary);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .promo-header h2 {
+            font-size: 1.3rem;
+            margin-bottom: 8px;
+        }
+        
+        .promo-timer {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .timer-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--warning);
+            margin: 8px 0;
+        }
+        
+        .promo-benefits {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+        
+        .benefit-icon {
+            width: 24px;
+            height: 24px;
+            background: var(--warning);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            flex-shrink: 0;
+            font-size: 0.8rem;
+        }
+        
+        .get-promo-btn {
+            background: var(--primary);
+            color: white;
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .get-promo-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .get-promo-btn:disabled {
+            background: var(--secondary);
+            cursor: not-allowed;
+        }
+        
+        /* Mobile responsiveness */
+        @media (min-width: 768px) {
+            .layout {
+                flex-direction: row;
+            }
+            
+            .container {
+                width: 65%;
+            }
+            
+            .promo-sidebar {
+                width: 35%;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .price-info {
+                grid-template-columns: 1fr;
+            }
+            
+            .promo-sidebar {
+                order: -1;
+            }
+        }
+        
+        /* Utility classes */
+        .hidden {
+            display: none !important;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .mt-1 {
+            margin-top: 8px;
+        }
+        
+        .mb-1 {
+            margin-bottom: 8px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🔁 Обмінник TON на USDT</h1>
-        
-        <div class="description">
-            Обміняйте ваші TON на USDT (Tether) за фіксованим курсом. Швидко, зручно та безпечно.
-        </div>
-        
-        <div class="token-info">
-            <h3>Токен: <span id="token-name">Tether USDT</span> (<span id="token-symbol">USD₮</span>)</h3>
-            <div class="price-info">
-                <p>Курс: 1 USDT = 1 USDT</p>
-                <p>Поточний курс TON: <span id="ton-price">2.50</span> USDT</p>
-                <p>1 TON = <span id="tokens-per-ton">2.5</span> USDT</p>
-            </div>
-        </div>
-        
-        <div class="exchange-container">
-            <div class="input-group">
-                <label for="ton-amount">Введіть кількість TON:</label>
-                <input type="number" id="ton-amount" class="input-field" placeholder="0.0" min="0" step="0.1" value="1">
+    <div class="layout">
+        <div class="container">
+            <h1>🔁 Обмінник TON на USDT</h1>
+            
+            <div class="description">
+                Обміняйте ваші TON на USDT (Tether) за фіксованим курсом. Швидко, зручно та безпечно.
             </div>
             
-            <div class="conversion-arrow">↓</div>
-            
-            <div class="input-group">
-                <label for="token-amount">Ви отримаєте USDT: <span id="discount-badge" class="discount-badge" style="display: none;">+2.5%</span></label>
-                <input type="text" id="token-amount" class="input-field" readonly value="2.5">
+            <div class="token-info">
+                <h3>Токен: <span id="token-name">Tether USDT</span> (<span id="token-symbol">USD₮</span>)</h3>
+                <div class="price-info">
+                    <p>Курс: 1 USDT = 1 USDT</p>
+                    <p>Поточний курс TON: <span id="ton-price">2.50</span> USDT</p>
+                    <p>1 TON = <span id="tokens-per-ton">2.5</span> USDT</p>
+                </div>
             </div>
-        </div>
-        
-        <div id="discount-active" class="discount-active" style="display: none;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="#8aff9b" stroke-width="2"/>
-            </svg>
-            <span style="margin-left: 10px;">Акційна знижка 2.5% активна! Залишилось: <span id="discount-timer">05:00</span></span>
-        </div>
-        
-        <div class="button-group">
-            <button id="connect-btn">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2"/>
-                    <path d="M9 16H15C16.1046 16 17 15.1046 17 14V10C17 8.89543 16.1046 8 15 8H9C7.89543 8 7 8.89543 7 10V14C7 15.1046 7.89543 16 9 16Z" stroke="currentColor" stroke-width="2"/>
-                    <path d="M10 10H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M10 14H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            
+            <div class="exchange-container">
+                <div class="input-group">
+                    <label for="ton-amount">Введіть кількість TON:</label>
+                    <input type="number" id="ton-amount" class="input-field" placeholder="0.0" min="0" step="0.1" value="1">
+                </div>
+                
+                <div class="conversion-arrow">↓</div>
+                
+                <div class="input-group">
+                    <label for="token-amount">Ви отримаєте USDT: <span id="discount-badge" class="discount-badge hidden">+2.5%</span></label>
+                    <input type="text" id="token-amount" class="input-field" readonly value="2.5">
+                </div>
+            </div>
+            
+            <div id="discount-active" class="discount-active hidden">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="#8aff9b" stroke-width="2"/>
                 </svg>
-                Підключити гаманець
-            </button>
+                <span style="margin-left: 10px;">Акційна знижка 2.5% активна! Залишилось: <span id="discount-timer">05:00</span></span>
+            </div>
             
-            <button id="exchange-btn">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M7 10H21L19 20H5L7 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M16 6L20 10L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M8 18L4 14L8 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Обміняти
-            </button>
+            <div class="button-group">
+                <button id="connect-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M9 16H15C16.1046 16 17 15.1046 17 14V10C17 8.89543 16.1046 8 15 8H9C7.89543 8 7 8.89543 7 10V14C7 15.1046 7.89543 16 9 16Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M10 10H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M10 14H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Підключити гаманець
+                </button>
+                
+                <button id="exchange-btn" disabled>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 10H21L19 20H5L7 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16 6L20 10L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 18L4 14L8 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Обміняти
+                </button>
+            </div>
+            
+            <div id="wallet-info" class="wallet-info"></div>
+            
+            <div id="status" class="status"></div>
+            
+            <div class="steps">
+                <h3>Як це працює:</h3>
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-text">Підключіть ваш TON гаманець</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-text">Введіть кількість TON, яку хочете обміняти</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-text">Підтвердіть транзакцію у вашому гаманці</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-text">Отримайте USDT на ваш гаманець</div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-1">
+                <p class="rate-info">Комісія мережі: 0.05 TON</p>
+            </div>
         </div>
-        
-        <div id="wallet-info" class="wallet-info"></div>
-        
-        <div id="status" class="status"></div>
-        
-        <div class="steps">
-            <h3>Як це працює:</h3>
-            <div class="step">
-                <div class="step-number">1</div>
-                <div class="step-text">Підключіть ваш TON гаманець</div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-text">Введіть кількість TON, яку хочете обміняти</div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-text">Підтвердіть транзакцію у вашому гаманці</div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-text">Отримайте USDT на ваш гаманець</div>
-            </div>
-        </div>
-        
-        <div class="rate-info">
-            <p>Комісія мережі: 0.05 TON</p>
-        </div>
-    </div>
 
-    <div class="promo-sidebar">
-        <div class="promo-header">
-            <h2>🚀 Акційна пропозиція</h2>
-            <p>Отримайте +2.5% до обміну!</p>
+        <div class="promo-sidebar">
+            <div class="promo-header">
+                <h2>🚀 Акційна пропозиція</h2>
+                <p>Отримайте +2.5% до обміну!</p>
+            </div>
+            
+            <div class="promo-timer">
+                <h3>Акція діє:</h3>
+                <div class="timer-value" id="promo-timer">05:00</div>
+                <p>після активації</p>
+            </div>
+            
+            <div class="promo-benefits">
+                <h3>Переваги акції:</h3>
+                <div class="benefit-item">
+                    <div class="benefit-icon">+</div>
+                    <div>Додаткові 2.5% USDT при обміні</div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">⚡</div>
+                    <div>Миттєва активація</div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">🕒</div>
+                    <div>Діє 5 хвилин після оплати</div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">💎</div>
+                    <div>Ексклюзивна пропозиція</div>
+                </div>
+            </div>
+            
+            <button class="get-promo-btn" id="get-promo-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                Отримати за 1 TON
+            </button>
         </div>
-        
-        <div class="promo-timer">
-            <h3>Акція діє:</h3>
-            <div class="timer-value" id="promo-timer">05:00</div>
-            <p>після активації</p>
-        </div>
-        
-        <div class="promo-benefits">
-            <h3>Переваги акції:</h3>
-            <div class="benefit-item">
-                <div class="benefit-icon">+</div>
-                <div>Додаткові 2.5% USDT при обміні</div>
-            </div>
-            <div class="benefit-item">
-                <div class="benefit-icon">⚡</div>
-                <div>Миттєва активація</div>
-            </div>
-            <div class="benefit-item">
-                <div class="benefit-icon">🕒</div>
-                <div>Діє 5 хвилин після оплати</div>
-            </div>
-            <div class="benefit-item">
-                <div class="benefit-icon">💎</div>
-                <div>Ексклюзивна пропозиція</div>
-            </div>
-        </div>
-        
-        <button class="get-promo-btn" id="get-promo-btn">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
-            </svg>
-            Отримати за 1 TON
-        </button>
     </div>
 
     <script>
@@ -717,17 +774,17 @@
         // Оновлення відображення статусу знижки
         function updateDiscountDisplay() {
             if (discountActive) {
-                discountBadge.style.display = "inline-block";
-                discountActiveEl.style.display = "flex";
+                discountBadge.classList.remove('hidden');
+                discountActiveEl.classList.remove('hidden');
                 getPromoBtn.textContent = "Акція активована";
                 getPromoBtn.disabled = true;
-                getPromoBtn.style.background = "linear-gradient(to right, #28a745, #20c997)";
+                getPromoBtn.style.background = "var(--success)";
             } else {
-                discountBadge.style.display = "none";
-                discountActiveEl.style.display = "none";
+                discountBadge.classList.add('hidden');
+                discountActiveEl.classList.add('hidden');
                 getPromoBtn.textContent = "Отримати за 1 TON";
                 getPromoBtn.disabled = false;
-                getPromoBtn.style.background = "linear-gradient(to right, #ff6b6b, #ff9e6b)";
+                getPromoBtn.style.background = "";
                 promoTimerEl.textContent = "05:00";
             }
         }
@@ -763,4 +820,5 @@
     </script>
 </body>
 </html>
+
 
