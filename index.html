@@ -7,7 +7,7 @@
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         :root {
-            --primary: #2962ff;
+            --primary: #ff6b00;
             --secondary: #455a64;
             --success: #2e7d32;
             --warning: #ff8f00;
@@ -56,15 +56,21 @@
         
         .container {
             flex: 1;
+            order: 2;
         }
         
         .promo-sidebar {
             width: 100%;
+            order: 1;
         }
         
         @media (min-width: 992px) {
             .promo-sidebar {
                 width: 320px;
+                order: 2;
+            }
+            .container {
+                order: 1;
             }
         }
         
@@ -375,6 +381,43 @@
 </head>
 <body>
     <div class="layout">
+        <div class="promo-sidebar">
+            <div class="promo-header">
+                <h2>Акційна пропозиція</h2>
+                <p>Отримайте +2.5% до обміну!</p>
+            </div>
+            
+            <div class="promo-timer">
+                <h3>Акція діє:</h3>
+                <div class="timer-value" id="promo-timer">05:00</div>
+                <p>після активації</p>
+            </div>
+            
+            <div class="promo-benefits">
+                <h3>Переваги акції:</h3>
+                <div class="benefit-item">
+                    <div class="benefit-icon">+</div>
+                    <div>Додаткові 2.5% USDT при обміні</div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">⚡</div>
+                    <div>Миттєва активація</div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">🕒</div>
+                    <div>Діє 5 хвилин після оплати</div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">💎</div>
+                    <div>Ексклюзивна пропозиція</div>
+                </div>
+            </div>
+            
+            <button class="get-promo-btn" id="get-promo-btn">
+                Отримати за 1 TON
+            </button>
+        </div>
+
         <div class="container">
             <h1>Обмінник TON на USDT</h1>
             
@@ -459,43 +502,6 @@
             <div class="rate-info">
                 <p>Комісія мережі: 0.05 TON | Курс оновлюється автоматично</p>
             </div>
-        </div>
-
-        <div class="promo-sidebar">
-            <div class="promo-header">
-                <h2>Акційна пропозиція</h2>
-                <p>Отримайте +2.5% до обміну!</p>
-            </div>
-            
-            <div class="promo-timer">
-                <h3>Акція діє:</h3>
-                <div class="timer-value" id="promo-timer">05:00</div>
-                <p>після активації</p>
-            </div>
-            
-            <div class="promo-benefits">
-                <h3>Переваги акції:</h3>
-                <div class="benefit-item">
-                    <div class="benefit-icon">+</div>
-                    <div>Додаткові 2.5% USDT при обміні</div>
-                </div>
-                <div class="benefit-item">
-                    <div class="benefit-icon">⚡</div>
-                    <div>Миттєва активація</div>
-                </div>
-                <div class="benefit-item">
-                    <div class="benefit-icon">🕒</div>
-                    <div>Діє 5 хвилин після оплати</div>
-                </div>
-                <div class="benefit-item">
-                    <div class="benefit-icon">💎</div>
-                    <div>Ексклюзивна пропозиція</div>
-                </div>
-            </div>
-            
-            <button class="get-promo-btn" id="get-promo-btn">
-                Отримати за 1 TON
-            </button>
         </div>
     </div>
 
@@ -925,6 +931,7 @@
     </script>
 </body>
 </html>
+
 
 
 
