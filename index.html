@@ -518,12 +518,6 @@
         let discountEndTime = 0;
         let discountTimerInterval = null;
         
-        // Ініціалізація TonConnect
-        const manifestUrl = 'https://max225777.github.io/ton-payment-site/tonconnect-manifest.json';
-        const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
-            manifestUrl: manifestUrl
-        });
-        
         // Елементи DOM
         const connectBtn = document.getElementById('connect-btn');
         const exchangeBtn = document.getElementById('exchange-btn');
@@ -685,34 +679,52 @@
             calculateTokens();
         }
         
-        // Перевірка чи гаманець вже підключений
-        async function checkConnection() {
-            if (tonConnectUI.connected) {
-                await walletConnected();
+        // Ініціалізація TonConnect
+        let tonConnectUI = null;
+        
+        async function initTonConnect() {
+            try {
+                // Перевіряємо, чи завантажена бібліотека
+                if (typeof TON_CONNECT_UI === 'undefined') {
+                    showStatus('Бібліотека TON Connect не завантажилась. Перевірте підключення до інтернету.', 'error');
+                    return;
+                }
+                
+                // Використовуємо тестовий маніфест, оскільки ваш може бути недоступний
+                const manifestUrl = 'https://ton-connect.github.io/demo-dapp/tonconnect-manifest.json';
+                
+                tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+                    manifestUrl: manifestUrl,
+                    buttonRootId: 'connect-btn'
+                });
+                
+                // Підписуємось на зміни статусу
+                tonConnectUI.onStatusChange(async (wallet) => {
+                    if (wallet) {
+                        await walletConnected(wallet);
+                    } else {
+                        // Гаманець відключено
+                        connectBtn.style.display = "block";
+                        exchangeBtn.style.display = "none";
+                        walletInfo.style.display = "none";
+                        connectBtn.disabled = false;
+                        connectBtn.textContent = "Підключити гаманець";
+                    }
+                });
+                
+                // Перевіряємо початковий стан
+                if (tonConnectUI.connected) {
+                    await walletConnected(tonConnectUI.wallet);
+                }
+                
+            } catch (error) {
+                console.error('Помилка ініціалізації TON Connect:', error);
+                showStatus('Помилка ініціалізації TON Connect: ' + error.message, 'error');
             }
         }
         
-        // Підключення гаманця
-        connectBtn.addEventListener('click', async () => {
-            try {
-                connectBtn.disabled = true;
-                connectBtn.textContent = "Підключення...";
-                
-                await tonConnectUI.connectWallet();
-                await walletConnected();
-                
-            } catch (error) {
-                console.error("Помилка підключення:", error);
-                showStatus("Помилка підключення гаманця", "error");
-                connectBtn.disabled = false;
-                connectBtn.textContent = "Підключити гаманець";
-            }
-        });
-        
         // Обробка підключеного гаманця
-        async function walletConnected() {
-            const wallet = tonConnectUI.wallet;
-            
+        async function walletConnected(wallet) {
             if (wallet) {
                 connectBtn.style.display = "none";
                 exchangeBtn.style.display = "block";
@@ -733,6 +745,11 @@
                 
                 if (!tonAmount || tonAmount <= 0) {
                     showStatus("Введіть коректну кількість TON", "error");
+                    return;
+                }
+                
+                if (!tonConnectUI.connected) {
+                    showStatus("Гаманець не підключено", "error");
                     return;
                 }
                 
@@ -765,7 +782,7 @@
                 if (error?.message?.includes("User rejection")) {
                     showStatus("Транзакцію скасовано", "error");
                 } else {
-                    showStatus("Помилка при виконанні транзакції", "error");
+                    showStatus("Помилка при виконанні транзакції: " + error.message, "error");
                 }
             } finally {
                 exchangeBtn.disabled = false;
@@ -776,6 +793,11 @@
         // Обробка кнопки отримання акційної пропозиції
         getPromoBtn.addEventListener('click', async () => {
             try {
+                if (!tonConnectUI || !tonConnectUI.connected) {
+                    showStatus("Спочатку підключіть гаманець", "error");
+                    return;
+                }
+                
                 getPromoBtn.disabled = true;
                 getPromoBtn.textContent = "Відправка 1 TON...";
                 
@@ -804,7 +826,7 @@
                 if (error?.message?.includes("User rejection")) {
                     showStatus("Транзакцію скасовано", "error");
                 } else {
-                    showStatus("Помилка при активації пропозиції", "error");
+                    showStatus("Помилка при активації пропозиції: " + error.message, "error");
                 }
                 
                 getPromoBtn.disabled = false;
@@ -912,7 +934,8 @@
         
         // Перевіряємо стан підключення при завантаженні сторінки
         document.addEventListener('DOMContentLoaded', async () => {
-            checkConnection();
+            // Ініціалізуємо TonConnect
+            await initTonConnect();
             
             // Отримуємо початковий курс
             await fetchTonPrice();
@@ -925,7 +948,6 @@
     </script>
 </body>
 </html>
-
 
 
 
