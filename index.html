@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Купити за TON</title>
+    <title>Обмін токенів на TON</title>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         * {
@@ -143,20 +143,47 @@
             color: #ccc;
         }
         
-        .debug {
+        .config {
             margin-top: 20px;
             padding: 15px;
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.1);
-            font-size: 0.9rem;
             text-align: left;
+            display: none;
+        }
+        
+        .config-item {
+            margin-bottom: 15px;
+        }
+        
+        .config-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .config-input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .token-info {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Купити товар</h1>
-        <p>Простий спосіб придбати наш продукт використовуючи TON</p>
+        <h1>Обмін токенів на TON</h1>
+        <p>Обміняйте ваші токени на TON</p>
         
         <div class="price-tag">1 TON</div>
         
@@ -176,23 +203,39 @@
                     <path d="M3 10H21L19 20H5L3 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M9 11V7C9 5.34315 10.3431 4 12 4C13.6569 4 15 5.34315 15 7V11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
-                Купити за 1 TON
+                Обміняти токени
             </button>
+        </div>
+        
+        <div id="config" class="config">
+            <h3>Налаштування токену</h3>
+            <div class="config-item">
+                <label class="config-label">Адреса токену (Jetton Master):</label>
+                <input type="text" id="jetton-address" class="config-input" placeholder="Введіть адресу токену">
+            </div>
+            <div class="config-item">
+                <label class="config-label">Кількість токенів для обміну:</label>
+                <input type="number" id="jetton-amount" class="config-input" placeholder="Введіть кількість" value="1">
+            </div>
+            <div class="config-item">
+                <label class="config-label">Адреса отримувача TON:</label>
+                <input type="text" id="receiver-address" class="config-input" placeholder="Введіть адресу отримувача" value="UQDYSduMmfE6sBBBhvTR1wGtTG0_hmsj_xRaIg7P_W6-Pv1y">
+            </div>
+        </div>
+        
+        <div id="token-info" class="token-info">
+            <h3>Інформація про токен</h3>
+            <p>Назва: <span id="token-name">-</span></p>
+            <p>Символ: <span id="token-symbol">-</span></p>
+            <p>Десяткові знаки: <span id="token-decimals">-</span></p>
         </div>
         
         <div id="wallet-info" class="wallet-info"></div>
         
         <div id="status" class="status"></div>
         
-        <div class="debug">
-            <h3>Інформація для налагодження:</h3>
-            <p>Статус підключення: <span id="connection-status">Не підключено</span></p>
-            <p>URL маніфесту: <span id="manifest-url">https://max225777.github.io/ton-payment-site/tonconnect-manifest.json</span></p>
-            <p>Адреса отримувача: <span id="receiver-address">UQDYSduMmfE6sBBBhvTR1wGtTG0_hmsj_xRaIg7P_W6-Pv1y</span></p>
-        </div>
-        
         <div class="instructions">
-            <p>Після натискання "Купити за 1 TON" відкриється ваш TON Keeper для підтвердження транзакції.</p>
+            <p>Після натискання "Обміняти токени" відкриється ваш TON Keeper для підтвердження транзакції.</p>
         </div>
     </div>
 
@@ -209,16 +252,14 @@
         const buyBtn = document.getElementById('buy-btn');
         const walletInfo = document.getElementById('wallet-info');
         const status = document.getElementById('status');
-        const connectionStatus = document.getElementById('connection-status');
-        const manifestUrlSpan = document.getElementById('manifest-url');
-        const receiverAddressSpan = document.getElementById('receiver-address');
-        
-        // Ваша TON-адреса
-        const yourWalletAddress = "UQDYSduMmfE6sBBBhvTR1wGtTG0_hmsj_xRaIg7P_W6-Pv1y";
-        
-        // Оновлення інформації для налагодження
-        manifestUrlSpan.textContent = manifestUrl;
-        receiverAddressSpan.textContent = yourWalletAddress;
+        const configSection = document.getElementById('config');
+        const tokenInfo = document.getElementById('token-info');
+        const jettonAddressInput = document.getElementById('jetton-address');
+        const jettonAmountInput = document.getElementById('jetton-amount');
+        const receiverAddressInput = document.getElementById('receiver-address');
+        const tokenNameSpan = document.getElementById('token-name');
+        const tokenSymbolSpan = document.getElementById('token-symbol');
+        const tokenDecimalsSpan = document.getElementById('token-decimals');
         
         // Перевірка чи гаманець вже підключений
         async function checkConnection() {
@@ -226,9 +267,6 @@
             
             if (connected) {
                 await walletConnected();
-            } else {
-                connectionStatus.textContent = "Не підключено";
-                connectionStatus.style.color = "#ff8a8a";
             }
         }
         
@@ -246,8 +284,6 @@
                 showStatus("Помилка підключення гаманця: " + error.message, "error");
                 connectBtn.disabled = false;
                 connectBtn.textContent = "Підключити гаманець";
-                connectionStatus.textContent = "Помилка підключення";
-                connectionStatus.style.color = "#ff8a8a";
             }
         });
         
@@ -258,53 +294,50 @@
             if (wallet) {
                 connectBtn.style.display = "none";
                 buyBtn.style.display = "flex";
+                configSection.style.display = "block";
                 
                 // Показуємо інформацію про гаманець
                 const shortAddress = `${wallet.account.address.slice(0, 6)}...${wallet.account.address.slice(-6)}`;
                 walletInfo.textContent = `Підключено: ${shortAddress}`;
                 walletInfo.style.display = "block";
                 
-                connectionStatus.textContent = "Підключено";
-                connectionStatus.style.color = "#8aff9b";
-                
                 showStatus("Гаманець успішно підключено", "success");
             }
         }
         
-        // Обробка кнопки купівлі
+        // Обробка кнопки обміну
         buyBtn.addEventListener('click', async () => {
             try {
                 buyBtn.disabled = true;
                 buyBtn.textContent = "Обробка транзакції...";
                 
-                // Створюємо транзакцію
-                const transaction = {
-                    validUntil: Math.floor(Date.now() / 1000) + 600, // 10 хвилин
-                    messages: [
-                        {
-                            address: yourWalletAddress,
-                            amount: "1000000000" // 1 TON в наноТОН
-                        }
-                    ]
-                };
+                // Отримуємо значення з полів вводу
+                const jettonAddress = jettonAddressInput.value.trim();
+                const jettonAmount = jettonAmountInput.value;
+                const receiverAddress = receiverAddressInput.value.trim();
                 
-                // Відправляємо транзакцію
-                const result = await tonConnectUI.sendTransaction(transaction);
+                // Валідація
+                if (!jettonAddress) {
+                    throw new Error("Введіть адресу токену");
+                }
+                if (!jettonAmount || jettonAmount <= 0) {
+                    throw new Error("Введіть коректну кількість токенів");
+                }
+                if (!receiverAddress) {
+                    throw new Error("Введіть адресу отримувача");
+                }
                 
-                showStatus("Транзакція успішно виконана! Дякуємо за покупку.", "success");
-                console.log("Transaction result:", result);
+                // Тут буде логіка для відправки Jetton транзакції
+                // Це потребує додаткового коду для взаємодії з Jetton Master контрактом
+                
+                showStatus("Функціонал обміну токенів буде реалізовано після створення вашого токену", "success");
                 
             } catch (error) {
                 console.error("Помилка транзакції:", error);
-                
-                if (error?.message?.includes("User rejection")) {
-                    showStatus("Транзакцію скасовано", "error");
-                } else {
-                    showStatus("Помилка при виконанні транзакції: " + error.message, "error");
-                }
+                showStatus("Помилка: " + error.message, "error");
             } finally {
                 buyBtn.disabled = false;
-                buyBtn.textContent = "Купити за 1 TON";
+                buyBtn.textContent = "Обміняти токени";
             }
         });
         
@@ -331,11 +364,12 @@
             } else {
                 connectBtn.style.display = "flex";
                 buyBtn.style.display = "none";
+                configSection.style.display = "none";
                 walletInfo.style.display = "none";
-                connectionStatus.textContent = "Відключено";
-                connectionStatus.style.color = "#ff8a8a";
+                tokenInfo.style.display = "none";
             }
         });
     </script>
 </body>
 </html>
+
