@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Купити за TON</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Купити товар</h1>
+        <p>Простий спосіб придбати наш продукт використовуючи TON</p>
+
+        <div class="price-tag">1 TON</div>
+
+        <div class="button-group">
+            <button id="connect-btn">
+                <svg class="ton-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2"/>
+                    <path d="M9 16H15C16.1046 16 17 15.1046 17 14V10C17 8.89543 16.1046 8 15 8H9C7.89543 8 7 8.89543 7 10V14C7 15.1046 7.89543 16 9 16Z" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 10H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M10 14H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Підключити гаманець
+            </button>
+
+            <button id="buy-btn">
+                <svg class="ton-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 10H21L19 20H5L3 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9 11V7C9 5.34315 10.3431 4 12 4C13.6569 4 15 5.34315 15 7V11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Купити за 1 TON
+            </button>
+        </div>
+
+        <div id="wallet-info" class="wallet-info"></div>
+
+        <div id="status" class="status"></div>
+
+        <div class="instructions">
+            <p>Після натискання "Купити за 1 TON" відкриється ваш TON Keeper для підтвердження транзакції.</p>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
