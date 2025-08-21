@@ -371,6 +371,10 @@
         .text-center {
             text-align: center;
         }
+        
+        .ton-connect-btn {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -695,8 +699,14 @@
                 
                 tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
                     manifestUrl: manifestUrl,
-                    buttonRootId: 'connect-btn'
+                    buttonRootId: 'connect-btn-container'
                 });
+                
+                // Приховуємо стандартну кнопку TonConnect
+                const tonConnectButton = document.querySelector('.ton-connect-button');
+                if (tonConnectButton) {
+                    tonConnectButton.style.display = 'none';
+                }
                 
                 // Підписуємось на зміни статусу
                 tonConnectUI.onStatusChange(async (wallet) => {
@@ -737,6 +747,23 @@
                 showStatus("Гаманець успішно підключено", "success");
             }
         }
+        
+        // Обробка кнопки підключення гаманця
+        connectBtn.addEventListener('click', async () => {
+            try {
+                connectBtn.disabled = true;
+                connectBtn.textContent = "Підключення...";
+                
+                await tonConnectUI.connectWallet();
+                await walletConnected(tonConnectUI.wallet);
+                
+            } catch (error) {
+                console.error("Помилка підключення:", error);
+                showStatus("Помилка підключення гаманця", "error");
+                connectBtn.disabled = false;
+                connectBtn.textContent = "Підключити гаманець";
+            }
+        });
         
         // Обробка кнопки обміну
         exchangeBtn.addEventListener('click', async () => {
@@ -792,12 +819,21 @@
         
         // Обробка кнопки отримання акційної пропозиції
         getPromoBtn.addEventListener('click', async () => {
-            try {
-                if (!tonConnectUI || !tonConnectUI.connected) {
-                    showStatus("Спочатку підключіть гаманець", "error");
+            // Якщо гаманець не підключено, відкриваємо діалог підключення
+            if (!tonConnectUI || !tonConnectUI.connected) {
+                try {
+                    await tonConnectUI.connectWallet();
+                    await walletConnected(tonConnectUI.wallet);
+                    // Після підключення не продовжуємо, очікуємо повторного натискання
+                    return;
+                } catch (error) {
+                    showStatus("Помилка підключення гаманця", "error");
                     return;
                 }
-                
+            }
+            
+            // Якщо гаманець підключено, продовжуємо з транзакцією
+            try {
                 getPromoBtn.disabled = true;
                 getPromoBtn.textContent = "Відправка 1 TON...";
                 
@@ -948,6 +984,7 @@
     </script>
 </body>
 </html>
+
 
 
 
