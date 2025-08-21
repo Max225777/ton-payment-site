@@ -7,7 +7,7 @@
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         :root {
-            --primary: #ff6b00;
+            --primary: #2962ff;
             --secondary: #455a64;
             --success: #2e7d32;
             --warning: #ff8f00;
@@ -208,7 +208,7 @@
         }
         
         #exchange-btn {
-            background: var(--success);
+            background: var(--primary);
             color: white;
             display: none;
         }
@@ -383,7 +383,7 @@
     <div class="layout">
         <div class="promo-sidebar">
             <div class="promo-header">
-                <h2>Акційна пропозиція</h2>
+                <h2>Одноразова акція</h2>
                 <p>Отримайте +2.5% до обміну!</p>
             </div>
             
@@ -777,7 +777,7 @@
                 exchangeBtn.disabled = false;
                 exchangeBtn.textContent = "Обміняти";
             }
-        });
+        }
         
         // Обробка кнопки отримання акційної пропозиції
         getPromoBtn.addEventListener('click', async () => {
@@ -931,6 +931,7 @@
     </script>
 </body>
 </html>
+
 
 
 
