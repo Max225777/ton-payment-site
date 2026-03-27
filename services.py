@@ -397,6 +397,15 @@ async def get_or_create_user(telegram_id: int, username: str = None,
         return dict(row)
 
 
+async def set_user_language(telegram_id: int, lang: str):
+    """Set user interface language (ru/uk)."""
+    if lang not in ("ru", "uk"):
+        lang = "ru"
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        await db.execute("UPDATE users SET language=? WHERE telegram_id=?", (lang, telegram_id))
+        await db.commit()
+
+
 async def get_user(telegram_id: int) -> Optional[dict]:
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         return await _fetchone(db, "SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
@@ -425,14 +434,41 @@ async def get_all_users(limit: int = 0) -> List[dict]:
 
 
 async def search_users(query: str) -> List[dict]:
-    """Search users by telegram_id or username."""
+    """Search users by telegram_id, username or first_name."""
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         if query.isdigit():
             rows = await _fetchall(db, "SELECT * FROM users WHERE telegram_id=?", (int(query),))
         else:
             q = query.lstrip("@").lower()
-            rows = await _fetchall(db, "SELECT * FROM users WHERE LOWER(username) LIKE ?", (f"%{q}%",))
+            rows = await _fetchall(db,
+                "SELECT * FROM users WHERE LOWER(username) LIKE ? OR LOWER(first_name) LIKE ?",
+                (f"%{q}%", f"%{q}%"))
         return rows
+
+
+async def check_user_channel_subscriptions(bot, user_id: int) -> dict:
+    """Check if user is subscribed to all REQUIRED_CHANNELS.
+    Returns {"ok": True} if all subscribed, or {"ok": False, "channels": [...missing...]}.
+    """
+    if not REQUIRED_CHANNELS:
+        return {"ok": True, "channels": []}
+    missing = []
+    for ch in REQUIRED_CHANNELS:
+        url = ch.get("url", "")
+        name = ch.get("name", "")
+        # Extract username from URL
+        username = url.rstrip("/").split("/")[-1] if "t.me/" in url else ""
+        if not username:
+            continue
+        try:
+            member = await bot.get_chat_member(f"@{username}", user_id)
+            if member.status in ("left", "kicked"):
+                missing.append({"name": name, "url": url})
+        except Exception:
+            missing.append({"name": name, "url": url})
+    if missing:
+        return {"ok": False, "channels": missing}
+    return {"ok": True, "channels": []}
 
 
 # ─── CHANNELS ─────────────────────────────────────────────────────────────────
@@ -809,14 +845,21 @@ async def count_pending_posts(channel_id: int) -> int:
         return row["cnt"] if row else 0
 
 
-async def update_post_status(post_id: int, status: str):
+async def update_post_status(post_id: int, status: str, only_if_pending: bool = False) -> bool:
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         pub = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() if status == "published" else None
-        await db.execute(
-            "UPDATE processed_posts SET status=?, published_at=? WHERE id=?",
-            (status, pub, post_id)
-        )
+        if only_if_pending:
+            cur = await db.execute(
+                "UPDATE processed_posts SET status=?, published_at=? WHERE id=? AND status IN ('pending','awaiting_confirm','confirm_skipped')",
+                (status, pub, post_id)
+            )
+        else:
+            cur = await db.execute(
+                "UPDATE processed_posts SET status=?, published_at=? WHERE id=?",
+                (status, pub, post_id)
+            )
         await db.commit()
+        return cur.rowcount > 0
 
 
 async def mark_confirm_sent(post_id: int):

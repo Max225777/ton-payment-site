@@ -139,7 +139,8 @@ async def run_autopost(bot: Bot):
                                 media_group.append(InputMediaPhoto(media=f["file_id"], caption=cap, parse_mode=pm))
                         sent_list = await bot.send_media_group(user["telegram_id"], media_group)
                         # Send buttons separately (media_group doesn't support reply_markup)
-                        await bot.send_message(user["telegram_id"], "👆 Підтвердіть публікацію", reply_markup=kb)
+                        _confirm_msg = "👆 Підтвердіть публікацію" if _owner_lang == "uk" else "👆 Подтвердите публикацию"
+                        await bot.send_message(user["telegram_id"], _confirm_msg, reply_markup=kb)
                     elif m_type == "photo" and m_fid:
                         await bot.send_photo(user["telegram_id"], m_fid,
                             caption=_safe_caption(confirm_text), reply_markup=kb, parse_mode=ParseMode.HTML)
@@ -217,7 +218,10 @@ async def run_autopost(bot: Bot):
                         await update_post_status(post["id"], "skipped")
                         continue
 
-                    await update_post_status(post["id"], "published")
+                    was_updated = await update_post_status(post["id"], "published", only_if_pending=True)
+                    if not was_updated:
+                        log.warning(f"Autopost: post {post['id']} already handled, skipping")
+                        continue
                     await save_last_published(ch["id"], sent.message_id)
                     await cleanup_published_media(post["id"])
                     log.info(f"Autopost: published post {post['id']} to ch {ch['id']}")
@@ -367,6 +371,7 @@ async def api_me(request):
     return _j({"id": user["id"], "telegram_id": tg_id,
         "username": user.get("username",""), "first_name": user.get("first_name",""),
         "created_at": user.get("created_at",""), "balance": round(balance, 2),
+        "language": user.get("language", "ru"),
         "ref_code": ref_code, "ref_stats": ref, "service_stats": pub_stats,
         "is_admin": tg_id in ADMIN_IDS, "bot_username": bot_username})
 
@@ -846,12 +851,17 @@ async def api_admin_stats(request):
 
 @_auth
 async def api_admin_users(request):
-    from services import ADMIN_IDS, get_user_balance, DB_PATH, _fetchall
+    from services import ADMIN_IDS, get_user_balance, DB_PATH, _fetchall, search_users
     import aiosqlite
     if request["tg_user"]["id"] not in ADMIN_IDS:
         return _web.json_response({"error":"forbidden"}, status=403)
-    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-        users = await _fetchall(db, "SELECT * FROM users ORDER BY created_at DESC LIMIT 50")
+    # Support search query
+    q = request.rel_url.query.get("q", "").strip()
+    if q:
+        users = await search_users(q)
+    else:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            users = await _fetchall(db, "SELECT * FROM users ORDER BY created_at DESC LIMIT 50")
     result = []
     for u in users:
         bal = await get_user_balance(u["telegram_id"])
@@ -860,7 +870,7 @@ async def api_admin_users(request):
 
 @_auth
 async def api_admin_user_get(request):
-    from services import ADMIN_IDS, get_user, get_user_balance, get_user_channels
+    from services import ADMIN_IDS, get_user, get_user_balance, get_user_channels, get_channel_settings
     if request["tg_user"]["id"] not in ADMIN_IDS:
         return _web.json_response({"error":"forbidden"}, status=403)
     tg_id = int(request.match_info["tg_id"])
@@ -868,7 +878,12 @@ async def api_admin_user_get(request):
     if not user: return _web.json_response({"error":"not found"}, status=404)
     balance = await get_user_balance(tg_id)
     channels = await get_user_channels(tg_id)
-    return _j({**user,"balance":round(balance,2),"channels":channels})
+    # Enrich channels with settings
+    enriched_channels = []
+    for ch in channels:
+        s = await get_channel_settings(ch["id"])
+        enriched_channels.append({**ch, "settings": s})
+    return _j({**user, "balance": round(balance, 2), "channels": enriched_channels})
 
 @_auth
 async def api_admin_balance(request):
@@ -985,18 +1000,62 @@ async def _cors_middleware(app, handler):
         return resp
     return middleware
 
+@_auth
+async def api_set_language(request):
+    """Set user interface language (ru/uk)."""
+    from services import set_user_language
+    tg_id = request["tg_user"]["id"]
+    body = await request.json()
+    lang = body.get("lang", "ru")
+    await set_user_language(tg_id, lang)
+    return _j({"ok": True, "lang": lang})
+
+@_auth
+async def api_check_subscriptions(request):
+    """Check if user is subscribed to required channels."""
+    from services import check_user_channel_subscriptions, _bot_instance, REQUIRED_CHANNELS
+    tg_id = request["tg_user"]["id"]
+    if not _bot_instance or not REQUIRED_CHANNELS:
+        return _j({"ok": True, "channels": []})
+    result = await check_user_channel_subscriptions(_bot_instance, tg_id)
+    return _j(result)
+
+@_auth
+async def api_admin_all_channels(request):
+    """Admin: list all channels with owner info."""
+    from services import ADMIN_IDS, get_all_channels_with_owners, get_channel_settings
+    if request["tg_user"]["id"] not in ADMIN_IDS:
+        return _web.json_response({"error":"forbidden"}, status=403)
+    channels = await get_all_channels_with_owners()
+    result = []
+    for ch in channels:
+        s = await get_channel_settings(ch["id"])
+        result.append({**ch, "settings": s})
+    return _j(result)
+
+@_auth
+async def api_admin_user_block(request):
+    """Admin: block/unblock user."""
+    from services import ADMIN_IDS, set_user_blocked
+    if request["tg_user"]["id"] not in ADMIN_IDS:
+        return _web.json_response({"error":"forbidden"}, status=403)
+    body = await request.json()
+    tg_id = int(body.get("telegram_id", 0))
+    blocked = bool(body.get("blocked", False))
+    await set_user_blocked(tg_id, blocked)
+    return _j({"ok": True, "telegram_id": tg_id, "blocked": blocked})
+
 async def api_media_stream(request):
     """Redirect to Telegram file URL directly — avoids loading video into RAM (OOM prevention)."""
     from services import _bot_instance
     from urllib.parse import unquote as _unqs
     file_id = _unqs(request.match_info["file_id"])
     if not file_id:
-        return _web.Response(body=b"", status=204)
-    # BAAC... = large video/document files - redirect directly to avoid OOM
+        return _web.Response(body=b"", status=404)
     try:
         file = await _bot_instance.get_file(file_id)
         if not file or not file.file_path:
-            return _web.Response(body=b"", status=204)
+            return _web.Response(body=b"", status=404)
         tg_url = f"https://api.telegram.org/file/bot{_bot_instance.token}/{file.file_path}"
         return _web.Response(status=302, headers={"Location": tg_url})
     except Exception as e:
@@ -1068,6 +1127,11 @@ async def start_webapp():
     app.router.add_get   ("/api/media/{file_id}/thumb",    api_media_thumb)
     app.router.add_get   ("/api/media/{file_id}/stream",   api_media_stream)
     app.router.add_get   ("/api/channel/{id}/photo",       api_channel_photo)
+    # New endpoints
+    app.router.add_post  ("/api/set_language",              api_set_language)
+    app.router.add_get   ("/api/check_subscriptions",       api_check_subscriptions)
+    app.router.add_get   ("/api/admin/channels",            api_admin_all_channels)
+    app.router.add_post  ("/api/admin/user/block",          api_admin_user_block)
     runner = _web.AppRunner(app)
     await runner.setup()
     site = _web.TCPSite(runner, "0.0.0.0", 8080)

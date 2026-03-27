@@ -423,8 +423,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   </div>
   <div class="stit">Настройки</div>
   <div class="card" style="padding:4px 16px">
-    <div class="sr tap"><div class="sr-l"><div class="sr-t">Язык интерфейса</div></div><span class="sr-v">🇷🇺 RU →</span></div>
-    <div class="sr"><div class="sr-l"><div class="sr-t">Уведомления</div></div><label class="tg"><input type="checkbox" checked><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="toggleLang()"><div class="sr-l"><div class="sr-t" id="lang-label">Язык интерфейса</div></div><span class="sr-v" id="lang-val">🇷🇺 RU →</span></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="notif-label">Уведомления</div></div><label class="tg"><input type="checkbox" checked><div class="tg-t"></div><div class="tg-d"></div></label></div>
   </div>
   <div class="stit">Статистика сервісу</div>
   <div class="ss4">
@@ -575,7 +575,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <button class="btn bp" onclick="admBroadcast()">📢 Надіслати всім</button>
     <div id="adm-bc-result" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
   </div>
-  <div class="stit">Останні користувачі</div>
+  <div class="stit" id="adm-users-title">Останні користувачі</div>
+  <div style="margin-bottom:12px">
+    <input class="inp" id="adm-search" placeholder="Пошук за ID або @username..." oninput="admSearch(this.value)" style="font-size:14px">
+  </div>
   <div class="card" style="padding:4px 16px" id="adm-users"><div class="sk" style="height:20px;margin:13px 0"></div></div>
 </div>
 
@@ -630,19 +633,19 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
 
 <!-- BOTTOM NAV -->
 <nav class="bnav">
-  <div class="ni" id="nfin" onclick="goTo('s-fin','Фінанси');setNav('nfin')">
+  <div class="ni" id="nfin" onclick="goTo('s-fin');setNav('nfin')">
     <span class="nic">💳</span><span class="nil">Фінанси</span>
   </div>
-  <div class="ni" id="nref" onclick="goTo('s-ref','Реферали');setNav('nref')">
+  <div class="ni" id="nref" onclick="goTo('s-ref');setNav('nref')">
     <span class="nic">👥</span><span class="nil">Реферали</span>
   </div>
-  <div class="nc on" id="nch" onclick="goTo('s-ch','Мої канали');setNav('nch')">
+  <div class="nc on" id="nch" onclick="goTo('s-ch');setNav('nch')">
     <div class="nc-btn">☰</div><span class="nil">Канали</span>
   </div>
-  <div class="ni" id="nbst" onclick="goTo('s-boost','Просування');setNav('nbst')">
+  <div class="ni" id="nbst" onclick="goTo('s-boost');setNav('nbst')">
     <span class="nic">🚀</span><span class="nil">Просування</span>
   </div>
-  <div class="ni" id="nset" onclick="goTo('s-set','Профіль');setNav('nset')">
+  <div class="ni" id="nset" onclick="goTo('s-set');setNav('nset')">
     <span class="nic">⚙️</span><span class="nil">Профіль</span>
   </div>
 </nav>
@@ -653,6 +656,247 @@ if (TG) { TG.ready(); TG.expand(); }
 
 const INIT = TG?.initData || '';
 let ME=null, CHANNELS=[], CFG={}, CUR_CH=null, CUR_SRC=null, CUR_S={}, Q_DATA=[], Q_POSTBTN={}, ADM_U=null, CUR_INVOICE=null;
+let LANG='ru'; // default language
+
+// ── i18n DICTIONARY ─────────────────────────────────────────────────────────
+const _I={
+ru:{
+  my_channels:'Мои каналы', finance:'Финансы', referrals:'Рефералы',
+  promotion:'Продвижение', profile:'Профиль', channels:'Каналы',
+  add_channel:'Добавить канал', add_channel_desc:'7 дней бесплатно · потом $2/мес',
+  add_bot_first:'Сначала добавьте бота', as_admin:'администратора',
+  username_or_link:'Username или ссылка на канал', can_paste:'Можно вставить:',
+  free_trial:'🎁 7 дней бесплатно',
+  free_trial_desc:'Первый канал — пробный период 7 дней.<br>Потом — всего <b style="color:var(--tx)">$2/мес</b>.',
+  btn_add_channel:'Добавить канал', adding:'Добавляю...',
+  enter_username:'Введите username канала',
+  no_channels:'🚀 Нет каналов. Добавьте первый!',
+  trial_badge:'🧪 Пробный', active_badge:'✅ Активный', expired_badge:'❌ Истекла',
+  queue:'Очередь', posts_day:'Постов', total:'Всего',
+  settings:'⚙️ Настройки', sources_patterns:'🔗 Источники и паттерны',
+  post_queue:'📋 Очередь постов', waiting:'ожидают',
+  subscription:'📅 Подписка', need_pay:'⚠️ Нужна оплата',
+  sub_expired:'Подписка истекла', sub_expired_desc:'Все настройки сохранены.<br>Автопостинг остановлен до пополнения.',
+  pay_sub:'💳 Оплатить подписку', delete_channel:'🗑 Удалить канал',
+  parse_posts:'🔄 Парсить посты', autopost:'🟢 Автопост',
+  autorenew:'🔄 Автопродление подписки',
+  autorenew_desc:'За 1 час до окончания автоматически списывает $ с баланса и продлевает подписку на 30 дней',
+  buy:'Купить', active_sub:'✓ Активна',
+  // Settings overlay
+  ov_autopost:'Автопостинг', autopost_enable:'Автопостинг', autopost_enable_desc:'Включить публикацию',
+  ai_rephrase:'AI переработка', ai_rephrase_desc:'Перефразирование текстов',
+  media_only:'Только с медиа', media_only_desc:'Собирать посты только с фото/видео',
+  time_from:'Начало', time_to:'Конец', posts_per_day:'Постов в день', post_lang:'Язык постов',
+  sub_section:'Подписка', autorenew_setting:'🔄 Автопродление подписки',
+  autorenew_setting_desc:'За 1 час до окончания автоматически списывает $<span id="s-price">2</span> с баланса и продлевает подписку на 30 дней. Если средств нет — придёт уведомление.',
+  postbtn_section:'Ссылка в конце поста', postbtn_enable:'Включить',
+  postbtn_text:'Текст', postbtn_url:'URL', save:'Сохранить', saving:'Сохраняю...',
+  saved:'✅ Сохранено',
+  // Queue
+  queue_title:'Очередь постов', queue_empty:'🎉 Очередь пуста',
+  posts_count:'постов', publish:'✅ Опубликовать', skip:'❌ Пропустить',
+  published:'✅ Опубликовано!', media_only_label:'Только медиа',
+  photo:'📸 Фото', video:'🎬 Видео', album:'📷 Альбом', gif:'🎞 GIF', text_only:'📄 Текст',
+  video_badge:'▶ Видео',
+  // Sources
+  sources_title:'Источники', no_sources:'Нет источников', add_source:'Добавить источник',
+  source_added:'✅ Источник добавлен! Ищем паттерн...',
+  enter_source:'Введи username источника', delete_source:'Удалить источник?',
+  deleted:'Удалено', auto_pattern:'🤖 Авто-паттерн', pattern_searching:'⏳ Паттерн ещё ищется...',
+  reset_pattern:'✕ Сбросить', reset_pattern_confirm:'Сбросить авто-паттерн?',
+  pattern_reset:'✅ Паттерн сброшен', patterns_title:'Паттерны',
+  patterns_desc:'Бот автоматически находит повторяющийся текст в конце постов и вырезает его. Можно добавить вручную.',
+  auto_patterns:'Авто-паттерны', manual_patterns:'Ручные паттерны',
+  pattern_placeholder:'Текст для удаления...', pattern_added:'✅ Добавлен', pattern_deleted:'Удалён',
+  not_found_yet:'Ещё не найдены',
+  // Finance
+  current_balance:'Текущий баланс', loading:'Загрузка...',
+  active_slots:'Активные слоты', top_up:'Пополнить баланс',
+  crypto_title:'Крипта (CryptoBot)', crypto_desc:'USDT · быстро и анонимно',
+  card_title:'Карта (UAH)', card_desc:'Через менеджера',
+  stars_title:'Telegram Stars', stars_desc:'Оплата звёздочками', coming_soon:'Скоро',
+  history:'История операций', history_empty:'История пустая',
+  slots_count:'слот(ов)', new_slot:'+ Новый слот',
+  // Pay modal
+  top_up_balance:'Пополнение баланса', top_up_card:'Пополнение картой',
+  insuf_title:'⚠️ Недостаточно средств',
+  insuf_desc:'Пополните баланс, чтобы оплатить подписку на канал. После пополнения нажмите «Оплатить подписку» на канале.',
+  crypto_pay_desc:'Оплата через <b style="color:var(--tx)">@CryptoBot</b>. Безопасно, быстро, без комиссий.',
+  pay_amount_label:'Сумма пополнения (USDT)', pay_amount_hint:'Минимум $1 · Зачисление мгновенно',
+  create_invoice:'₿ Создать счёт', creating_invoice:'Создаю счёт...',
+  invoice_created:'Счёт создан! ✅', invoice_pay_desc:'Оплатите через CryptoBot и вернитесь сюда.',
+  open_cryptobot:'Открыть CryptoBot →', check_payment:'Проверить оплату',
+  card_pay_desc:'Для пополнения картой напишите менеджеру:',
+  card_pay_note:'Укажите сумму пополнения и способ оплаты (Monobank, PrivatBank и т.д.). Зачисление в течение нескольких минут.',
+  write_manager:'💬 Написать менеджеру',
+  enter_amount:'Введи сумму (минимум $1)', invoice_ok:'✅ Счёт создан!',
+  payment_ok:'🎉 Оплата прошла! Баланс пополнен.',
+  payment_pending:'Оплата ещё не получена. Попробуй через минуту.',
+  // Boost
+  boost_soon:'Скоро', boost_desc:'Функционал продвижения в разработке.',
+  mutual_promo:'Взаимопиар', targeting:'Таргет', analytics:'Аналитика', partnerships:'Партнёрства',
+  // Referral
+  invite_earn:'Приглашай — зарабатывай',
+  ref_desc:'За каждого друга ты получаешь<br><b style="color:var(--grn);font-size:22px">50%</b> от всех его платежей<br>в течение <b style="color:var(--acc2)">3 месяцев</b> с момента регистрации.',
+  ref_hint:'💡 Пригласил друга → он оплатил подписку → ты получаешь <b style="color:var(--grn)">50%</b> от суммы. Действует 90 дней с дня регистрации друга.',
+  share_ref:'📤 Поделиться реферальной ссылкой',
+  invited:'Приглашено', earned:'Заработано', my_referrals:'Мои рефералы',
+  no_referrals:'Пока нет рефералов', paid:'оплачен',
+  // Settings page
+  my_stats:'Мои показатели', published_stat:'Опубликовано',
+  channels_stat:'Каналов', referrals_stat:'Рефералов', days_stat:'Дней',
+  settings_section:'Настройки', lang_setting:'Язык интерфейса', notifications:'Уведомления',
+  service_stats:'Статистика сервиса', users_stat:'Пользователей',
+  channels_srv:'Каналов', posts_srv:'Постов', days_srv:'Дней работы',
+  admin_panel:'👑 Панель администратора',
+  // Admin
+  admin_title:'👑 Администратор', general_stats:'Общая статистика',
+  admin_users:'Пользователей', admin_channels:'Каналов', admin_posts:'Постов', admin_revenue:'Выручка',
+  balance_mgmt:'Управление балансом', find:'Найти', found_user:'Пользователь',
+  amount_placeholder:'Сумма (+ или -)', note_placeholder:'Примечание',
+  change_balance:'Изменить баланс', sub_mgmt:'Управление подпиской канала',
+  ch_id_placeholder:'ID канала', days_placeholder:'Дней',
+  active_btn:'✅ Активна', trial_btn:'🧪 Триал', block_btn:'🔴 Блок',
+  broadcast_section:'Рассылка', broadcast_placeholder:'Текст рассылки (HTML поддерживается)',
+  send_all:'📢 Отправить всем', sending:'⏳ Отправляю...',
+  sent_result:'✅ Отправлено: {sent} / Ошибок: {errors}',
+  recent_users:'Последние пользователи', all_channels_admin:'Все каналы',
+  search_placeholder:'Поиск по ID или @username...',
+  user_channels:'каналов', user_block:'🚫 Заблокировать', user_unblock:'✅ Разблокировать',
+  // Subscription check
+  sub_check_title:'📢 Подпишитесь на каналы',
+  sub_check_desc:'Для использования бота подпишитесь на наши каналы:',
+  sub_check_btn:'✅ Проверить подписку', sub_checking:'Проверяю...',
+  sub_check_fail:'Вы ещё не подписаны на все каналы',
+  // Misc
+  error_loading:'Ошибка загрузки: ', error:'Ошибка: ',
+  confirm_delete:'Удалить', parsing_launched:'🔄 Парсинг запущен! Посты появятся через ~1 мин',
+  launching:'⏳ Запускаю...', launched:'✅ Запущено',
+  insuf_balance:'⚠️ Недостаточно средств — пополните баланс!',
+  autorenew_on:'🔄 Автопродление подписки включено', autorenew_off:'🔕 Автопродление подписки выключено',
+  buy_slot_confirm:'Купить слот за ${price} с баланса (${balance})?',
+  activate_confirm:'Активировать {name} за ${price} с баланса (${balance})?',
+  sub_activated:'✅ Подписка активирована для {name}!',
+  slot_paid:'✅ Слот оплачен!',
+  pattern_applied:'🧹 Паттерн применён ко всем постам!',
+  trial_added:'🎉 Канал добавлен! {days} дней бесплатно',
+  channel_added:'✅ Канал @{username} добавлен',
+  back:'🔙 Назад',
+},
+uk:{
+  my_channels:'Мої канали', finance:'Фінанси', referrals:'Реферали',
+  promotion:'Просування', profile:'Профіль', channels:'Канали',
+  add_channel:'Додати канал', add_channel_desc:'7 днів безкоштовно · потім $2/міс',
+  add_bot_first:'Спочатку додайте бота', as_admin:'адміністратора',
+  username_or_link:'Username або посилання на канал', can_paste:'Можна вставити:',
+  free_trial:'🎁 7 днів безкоштовно',
+  free_trial_desc:'Перший канал — пробний період 7 днів.<br>Після — лише <b style="color:var(--tx)">$2/міс</b>.',
+  btn_add_channel:'Додати канал', adding:'Додаю...',
+  enter_username:'Введіть username каналу',
+  no_channels:'🚀 Немає каналів. Додайте перший!',
+  trial_badge:'🧪 Пробний', active_badge:'✅ Активний', expired_badge:'❌ Закінчилась',
+  queue:'Черга', posts_day:'Постів', total:'Всього',
+  settings:'⚙️ Налаштування', sources_patterns:'🔗 Джерела і паттерни',
+  post_queue:'📋 Черга постів', waiting:'очікують',
+  subscription:'📅 Підписка', need_pay:'⚠️ Потрібна оплата',
+  sub_expired:'Підписка закінчилась', sub_expired_desc:'Всі налаштування збережені.<br>Автопостинг зупинено до поповнення.',
+  pay_sub:'💳 Оплатити підписку', delete_channel:'🗑 Видалити канал',
+  parse_posts:'🔄 Парсити пости', autopost:'🟢 Автопост',
+  autorenew:'🔄 Автопродовження підписки',
+  autorenew_desc:'За 1 год до закінчення автоматично списує $ з балансу і продовжує підписку на 30 днів',
+  buy:'Купити', active_sub:'✓ Активна',
+  ov_autopost:'Автопостинг', autopost_enable:'Автопостинг', autopost_enable_desc:'Увімкнути публікацію',
+  ai_rephrase:'AI переробка', ai_rephrase_desc:'Перефразування текстів',
+  media_only:'Тільки з медіа', media_only_desc:'Збирати пости лише з фото/відео',
+  time_from:'Початок', time_to:'Кінець', posts_per_day:'Постів на день', post_lang:'Мова постів',
+  sub_section:'Підписка', autorenew_setting:'🔄 Автопродовження підписки',
+  autorenew_setting_desc:'За 1 год до закінчення автоматично списує $<span id="s-price">2</span> з балансу і продовжує підписку на 30 днів. Якщо коштів немає — надійде сповіщення.',
+  postbtn_section:'Посилання в кінці поста', postbtn_enable:'Увімкнути',
+  postbtn_text:'Текст', postbtn_url:'URL', save:'Зберегти', saving:'Зберігаю...',
+  saved:'✅ Збережено',
+  queue_title:'Черга постів', queue_empty:'🎉 Черга порожня',
+  posts_count:'постів', publish:'✅ Опублікувати', skip:'❌ Пропустити',
+  published:'✅ Опубліковано!', media_only_label:'Тільки медіа',
+  photo:'📸 Фото', video:'🎬 Відео', album:'📷 Альбом', gif:'🎞 GIF', text_only:'📄 Текст',
+  video_badge:'▶ Відео',
+  sources_title:'Джерела', no_sources:'Немає джерел', add_source:'Додати джерело',
+  source_added:'✅ Джерело додано! Шукаємо паттерн...',
+  enter_source:'Введи username джерела', delete_source:'Видалити джерело?',
+  deleted:'Видалено', auto_pattern:'🤖 Авто-паттерн', pattern_searching:'⏳ Паттерн ще шукається...',
+  reset_pattern:'✕ Скинути', reset_pattern_confirm:'Скинути авто-паттерн?',
+  pattern_reset:'✅ Паттерн скинуто', patterns_title:'Паттерни',
+  patterns_desc:'Бот автоматично знаходить текст що повторюється в кінці постів і вирізає його. Можна додати вручну.',
+  auto_patterns:'Авто-паттерни', manual_patterns:'Ручні паттерни',
+  pattern_placeholder:'Текст для видалення...', pattern_added:'✅ Додано', pattern_deleted:'Видалено',
+  not_found_yet:'Ще не знайдені',
+  current_balance:'Поточний баланс', loading:'Завантаження...',
+  active_slots:'Активні слоти', top_up:'Поповнити баланс',
+  crypto_title:'Крипта (CryptoBot)', crypto_desc:'USDT · швидко і анонімно',
+  card_title:'Карта (UAH)', card_desc:'Через менеджера',
+  stars_title:'Telegram Stars', stars_desc:'Оплата зірочками', coming_soon:'Скоро',
+  history:'Історія операцій', history_empty:'Історія порожня',
+  slots_count:'слот(ів)', new_slot:'+ Новий слот',
+  top_up_balance:'Поповнення балансу', top_up_card:'Поповнення карткою',
+  insuf_title:'⚠️ Недостатньо коштів',
+  insuf_desc:'Поповніть баланс, щоб оплатити підписку на канал. Після поповнення натисніть «Оплатити підписку» на каналі.',
+  crypto_pay_desc:'Оплата через <b style="color:var(--tx)">@CryptoBot</b>. Безпечно, швидко, без комісій.',
+  pay_amount_label:'Сума поповнення (USDT)', pay_amount_hint:'Мінімум $1 · Зарахування миттєво',
+  create_invoice:'₿ Створити рахунок', creating_invoice:'Створюю рахунок...',
+  invoice_created:'Рахунок створено! ✅', invoice_pay_desc:'Оплатіть через CryptoBot та поверніться сюди.',
+  open_cryptobot:'Відкрити CryptoBot →', check_payment:'Перевірити оплату',
+  card_pay_desc:'Для поповнення карткою напишіть менеджеру:',
+  card_pay_note:'Вкажіть суму поповнення та спосіб оплати (Monobank, PrivatBank тощо). Зарахування протягом кількох хвилин.',
+  write_manager:'💬 Написати менеджеру',
+  enter_amount:'Введи суму (мінімум $1)', invoice_ok:'✅ Рахунок створено!',
+  payment_ok:'🎉 Оплата пройшла! Баланс поповнено.',
+  payment_pending:'Оплата ще не отримана. Спробуй через хвилину.',
+  boost_soon:'Скоро', boost_desc:'Функціонал просування в розробці.',
+  mutual_promo:'Взаємопіар', targeting:'Таргет', analytics:'Аналітика', partnerships:'Партнерства',
+  invite_earn:'Запрошуй — заробляй',
+  ref_desc:'За кожного друга ти отримуєш<br><b style="color:var(--grn);font-size:22px">50%</b> від усіх його платежів<br>протягом <b style="color:var(--acc2)">3 місяців</b> з моменту реєстрації.',
+  ref_hint:'💡 Запросив друга → він оплатив підписку → ти отримуєш <b style="color:var(--grn)">50%</b> від суми. Діє 90 днів з дня реєстрації друга.',
+  share_ref:'📤 Поділитися реферальним посиланням',
+  invited:'Запрошено', earned:'Зароблено', my_referrals:'Мої реферали',
+  no_referrals:'Поки немає рефералів', paid:'оплачений',
+  my_stats:'Мої показники', published_stat:'Опубліковано',
+  channels_stat:'Каналів', referrals_stat:'Рефералів', days_stat:'Днів',
+  settings_section:'Налаштування', lang_setting:'Мова інтерфейсу', notifications:'Сповіщення',
+  service_stats:'Статистика сервісу', users_stat:'Користувачів',
+  channels_srv:'Каналів', posts_srv:'Постів', days_srv:'Днів роботи',
+  admin_panel:'👑 Панель адміністратора',
+  admin_title:'👑 Адміністратор', general_stats:'Загальна статистика',
+  admin_users:'Користувачів', admin_channels:'Каналів', admin_posts:'Постів', admin_revenue:'Виручка',
+  balance_mgmt:'Управління балансом', find:'Знайти', found_user:'Користувач',
+  amount_placeholder:'Сума (+ або -)', note_placeholder:'Примітка',
+  change_balance:'Змінити баланс', sub_mgmt:'Керування підпискою каналу',
+  ch_id_placeholder:'ID каналу', days_placeholder:'Днів',
+  active_btn:'✅ Активна', trial_btn:'🧪 Тріал', block_btn:'🔴 Блок',
+  broadcast_section:'Розсилка', broadcast_placeholder:'Текст розсилки (HTML підтримується)',
+  send_all:'📢 Надіслати всім', sending:'⏳ Надсилаю...',
+  sent_result:'✅ Надіслано: {sent} / Помилок: {errors}',
+  recent_users:'Останні користувачі', all_channels_admin:'Всі канали',
+  search_placeholder:'Пошук за ID або @username...',
+  user_channels:'каналів', user_block:'🚫 Заблокувати', user_unblock:'✅ Розблокувати',
+  sub_check_title:'📢 Підпишіться на канали',
+  sub_check_desc:'Для використання бота підпишіться на наші канали:',
+  sub_check_btn:'✅ Перевірити підписку', sub_checking:'Перевіряю...',
+  sub_check_fail:'Ви ще не підписані на всі канали',
+  error_loading:'Помилка завантаження: ', error:'Помилка: ',
+  confirm_delete:'Видалити', parsing_launched:'🔄 Парсинг запущено! Пости з\'являться за ~1 хв',
+  launching:'⏳ Запускаю...', launched:'✅ Запущено',
+  insuf_balance:'⚠️ Недостатньо коштів — поповніть баланс!',
+  autorenew_on:'🔄 Автопродовження підписки увімкнено', autorenew_off:'🔕 Автопродовження підписки вимкнено',
+  buy_slot_confirm:'Купити слот за ${price} з балансу (${balance})?',
+  activate_confirm:'Активувати {name} за ${price} з балансу (${balance})?',
+  sub_activated:'✅ Підписку активовано для {name}!',
+  slot_paid:'✅ Слот оплачено!',
+  pattern_applied:'🧹 Паттерн застосовано до всіх постів!',
+  trial_added:'🎉 Канал додано! {days} днів безкоштовно',
+  channel_added:'✅ Канал @{username} додано',
+  back:'🔙 Назад',
+}
+};
+function t(k,params){let s=(_I[LANG]||_I.ru)[k]||(_I.ru)[k]||k;if(params)for(const[pk,pv] of Object.entries(params))s=s.replaceAll('{'+pk+'}',pv);return s;}
 
 // ── API ─────────────────────────────────────────────────────────────────────
 async function api(m,p,b){
@@ -664,7 +908,6 @@ async function api(m,p,b){
 // ── INIT ────────────────────────────────────────────────────────────────────
 async function init(){
   try{
-    // Show TG user info immediately from initData (no API wait)
     const u=TG?.initDataUnsafe?.user;
     if(u){
       document.getElementById('tb-id').textContent='ID '+(u.id||'');
@@ -676,6 +919,9 @@ async function init(){
     }
 
     [ME, CFG] = await Promise.all([api('GET','/api/me'), api('GET','/api/pay/config')]);
+    // Set language from user profile
+    if(ME.language && (ME.language==='uk'||ME.language==='ru')) LANG=ME.language;
+    applyLang();
     if(u?.photo_url){
       document.getElementById('tb-av').innerHTML=`<img src="${u.photo_url}" onerror="this.parentNode.innerHTML='<span>👤</span>'">`;
       document.getElementById('me-av').innerHTML=`<img src="${u.photo_url}" style="width:100%;height:100%;object-fit:cover">`;
@@ -683,10 +929,176 @@ async function init(){
     document.getElementById('tb-id').textContent='ID '+ME.telegram_id;
     document.getElementById('tb-bal').textContent='$'+ME.balance.toFixed(2);
     if(ME.is_admin) document.getElementById('adm-wrap').style.display='block';
+    // Check required channel subscriptions
+    await checkRequiredSubs();
     await loadChannels();
-    // Fill pay channel select
     fillPaySelect();
-  }catch(e){toast('Помилка завантаження: '+e.message)}
+  }catch(e){toast(t('error_loading')+e.message)}
+}
+
+// ── REQUIRED CHANNELS SUBSCRIPTION CHECK ────────────────────────────────────
+async function checkRequiredSubs(){
+  try{
+    const r=await api('GET','/api/check_subscriptions');
+    if(!r.ok && r.channels && r.channels.length>0){
+      showSubCheckModal(r.channels);
+    }
+  }catch(e){console.log('sub check skip:',e);}
+}
+function showSubCheckModal(channels){
+  let html='<div class="modal-handle"></div>';
+  html+='<div style="text-align:center;margin-bottom:16px"><div style="font-size:48px;margin-bottom:12px">📢</div>';
+  html+='<div style="font-size:18px;font-weight:800;margin-bottom:8px">'+t('sub_check_title')+'</div>';
+  html+='<div style="font-size:13px;color:var(--mu);line-height:1.6">'+t('sub_check_desc')+'</div></div>';
+  channels.forEach(ch=>{
+    html+='<div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--bor)">';
+    html+='<div style="width:42px;height:42px;background:var(--sur2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📢</div>';
+    html+='<div style="flex:1"><div style="font-size:14px;font-weight:700">'+ch.name+'</div></div>';
+    html+='<button class="btn bp" style="padding:8px 16px;font-size:12px;width:auto" onclick="openChLink(\''+ch.url+'\')">→</button>';
+    html+='</div>';
+  });
+  html+='<button class="btn bp" style="width:100%;margin-top:18px;padding:14px" id="sub-check-btn" onclick="recheckSubs()">'+t('sub_check_btn')+'</button>';
+  const modal=document.createElement('div');
+  modal.className='modal-back on';modal.id='sub-check-modal';
+  modal.style.cssText='display:flex;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.7);align-items:flex-end;justify-content:center';
+  modal.innerHTML='<div class="modal" style="max-height:80vh">'+html+'</div>';
+  document.body.appendChild(modal);
+}
+function openChLink(url){if(TG)TG.openTelegramLink(url);else window.open(url);}
+async function recheckSubs(){
+  const btn=document.getElementById('sub-check-btn');
+  if(btn){btn.textContent=t('sub_checking');btn.disabled=true;}
+  try{
+    const r=await api('GET','/api/check_subscriptions');
+    if(r.ok){
+      const m=document.getElementById('sub-check-modal');if(m)m.remove();
+      toast('✅');
+    }else{
+      toast(t('sub_check_fail'));
+      if(btn){btn.textContent=t('sub_check_btn');btn.disabled=false;}
+    }
+  }catch(e){if(btn){btn.textContent=t('sub_check_btn');btn.disabled=false;}}
+}
+
+// ── APPLY LANGUAGE ──────────────────────────────────────────────────────────
+function applyLang(){
+  // Nav labels
+  document.querySelector('#nfin .nil').textContent=t('finance');
+  document.querySelector('#nref .nil').textContent=t('referrals');
+  document.querySelector('#nch .nil').textContent=t('channels');
+  document.querySelector('#nbst .nil').textContent=t('promotion');
+  document.querySelector('#nset .nil').textContent=t('profile');
+  // TITLES map + top bar
+  TITLES={'s-ch':t('my_channels'),'s-fin':t('finance'),'s-boost':t('promotion'),'s-ref':t('referrals'),'s-set':t('profile')};
+  var curScr=document.querySelector('.scr.on');
+  document.getElementById('tb-title').textContent=TITLES[curScr?curScr.id:'s-ch']||t('my_channels');
+  // Language switcher
+  document.getElementById('lang-val').textContent=LANG==='uk'?'🇺🇦 UK →':'🇷🇺 RU →';
+  document.getElementById('lang-label').textContent=t('lang_setting');
+  document.getElementById('notif-label').textContent=t('notifications');
+  // Add channel button
+  var _acb=document.querySelector('.add-ch');
+  if(_acb){var _acd=_acb.querySelectorAll('div > div');if(_acd[2])_acd[2].textContent=t('add_channel');if(_acd[3])_acd[3].textContent=t('add_channel_desc');}
+  // Add channel modal
+  var _acm=document.getElementById('add-ch-modal');
+  if(_acm){
+    var _acmT=_acm.querySelector('div[style*="font-size:18px"]');if(_acmT)_acmT.textContent=t('add_channel');
+    var _acmD=_acm.querySelector('div[style*="font-size:14px"][style*="color:var(--mu)"]');
+    if(_acmD)_acmD.innerHTML=t('add_bot_first')+'<br><a id="add-bot-link" href="https://t.me/'+(ME&&ME.bot_username||'SocialGiant_AutoPost_bot')+'" style="color:var(--acc2);font-size:15px;font-weight:700;text-decoration:none" onclick="event.preventDefault();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(this.href);else window.open(this.href)"><b id="add-bot-name">@'+(ME&&ME.bot_username||'SocialGiant_AutoPost_bot')+'</b></a><br>'+(_I[LANG].as_admin?LANG==='uk'?'як <b style="color:var(--tx)">адміністратора</b> вашого каналу, потім вставте посилання або username.':'как <b style="color:var(--tx)">администратора</b> вашего канала, затем вставьте ссылку или username.':'');
+    var _acmL=_acm.querySelector('div[style*="font-size:13px"][style*="margin-bottom:8px"]');if(_acmL)_acmL.textContent=t('username_or_link');
+    var _acmH=_acm.querySelector('div[style*="font-size:12px"][style*="margin-top:8px"]');if(_acmH)_acmH.innerHTML=t('can_paste')+' <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">https://t.me/channel</span>';
+    var _acmG=_acm.querySelector('div[style*="background:rgba(45,212,160"]');
+    if(_acmG){var _gg=_acmG.querySelectorAll('div');if(_gg[0])_gg[0].innerHTML=t('free_trial');if(_gg[1])_gg[1].innerHTML=t('free_trial_desc');}
+    var _acmB=document.getElementById('add-ch-btn');if(_acmB)_acmB.textContent=t('btn_add_channel');
+  }
+  // Settings page titles
+  var _stits=document.querySelectorAll('#s-set .stit');
+  if(_stits[0])_stits[0].textContent=t('my_stats');
+  if(_stits[1])_stits[1].textContent=t('settings_section');
+  if(_stits[2])_stits[2].textContent=t('service_stats');
+  // Settings stat labels
+  var _ss=document.querySelectorAll('#s-set .ss4l');
+  if(_ss[0])_ss[0].textContent=t('published_stat');
+  if(_ss[1])_ss[1].textContent=t('channels_stat');
+  if(_ss[2])_ss[2].textContent=t('referrals_stat');
+  if(_ss[3])_ss[3].textContent=t('days_stat');
+  if(_ss[4])_ss[4].textContent=t('users_stat');
+  if(_ss[5])_ss[5].textContent=t('channels_srv');
+  if(_ss[6])_ss[6].textContent=t('posts_srv');
+  if(_ss[7])_ss[7].textContent=t('days_srv');
+  // Admin button
+  var _ab=document.querySelector('#adm-wrap .btn');if(_ab)_ab.textContent=t('admin_panel');
+  // Finance section
+  var _fstits=document.querySelectorAll('#s-fin .stit');
+  if(_fstits[0])_fstits[0].textContent=t('active_slots');
+  if(_fstits[1])_fstits[1].textContent=t('top_up');
+  if(_fstits[2])_fstits[2].textContent=t('history');
+  var _fbh=document.querySelector('.bal-hero');
+  if(_fbh){var _fbd=_fbh.querySelectorAll('div');if(_fbd[0])_fbd[0].textContent=t('current_balance');var _fsub=document.getElementById('fin-sub');if(_fsub&&_fsub.textContent===t('loading')||_fsub&&_fsub.textContent==='Загрузка...'||_fsub&&_fsub.textContent==='Завантаження...')_fsub.textContent=t('loading');}
+  // Finance pay methods
+  var _fprs=document.querySelectorAll('#s-fin .pay-row');
+  if(_fprs[0]){var _d0=_fprs[0].querySelectorAll('div > div');if(_d0[0])_d0[0].textContent=t('crypto_title');if(_d0[1])_d0[1].textContent=t('crypto_desc');}
+  if(_fprs[1]){var _d1=_fprs[1].querySelectorAll('div > div');if(_d1[0])_d1[0].textContent=t('card_title');if(_d1[1])_d1[1].textContent=t('card_desc');}
+  if(_fprs[2]){var _d2=_fprs[2].querySelectorAll('div > div');if(_d2[0])_d2[0].textContent=t('stars_title');if(_d2[1])_d2[1].textContent=t('stars_desc');}
+  var _psoon=document.querySelector('.pay-soon');if(_psoon)_psoon.textContent=t('coming_soon');
+  // Boost section
+  var _bstits=document.querySelectorAll('#s-boost .bcard');
+  var _bkeys=['mutual_promo','targeting','analytics','partnerships'];
+  _bstits.forEach(function(b,i){var t2=b.querySelector('div:last-child');if(t2&&_bkeys[i])t2.textContent=t(_bkeys[i]);});
+  var _bsoon=document.querySelector('#s-boost div[style*="font-size:20px"]');if(_bsoon)_bsoon.textContent=t('boost_soon');
+  var _bdesc=document.querySelector('#s-boost div[style*="font-size:13px"][style*="color:var(--mu)"]');if(_bdesc)_bdesc.textContent=t('boost_desc');
+  // Referral section
+  var _rh=document.querySelector('#s-ref div[style*="font-size:20px"]');if(_rh)_rh.textContent=t('invite_earn');
+  var _rd=document.querySelector('#s-ref div[style*="font-size:13px"][style*="line-height:1.7"]');if(_rd)_rd.innerHTML=t('ref_desc');
+  var _rhi=document.querySelector('#s-ref div[style*="font-size:11px"][style*="line-height:1.6"]');if(_rhi)_rhi.innerHTML=t('ref_hint');
+  var _rsb=document.querySelector('#s-ref > button');if(_rsb)_rsb.textContent=t('share_ref');
+  var _rsl=document.querySelectorAll('.rsbox');
+  if(_rsl[0]){var _rl0=_rsl[0].querySelector('div:last-child');if(_rl0)_rl0.textContent=t('invited');}
+  if(_rsl[1]){var _rl1=_rsl[1].querySelector('div:last-child');if(_rl1)_rl1.textContent=t('earned');}
+  var _rstit=document.querySelector('#s-ref .stit');if(_rstit)_rstit.textContent=t('my_referrals');
+  // Queue overlay title
+  var _qt=document.querySelector('#ov-q .ov-ttl');if(_qt)_qt.textContent=t('queue_title');
+  // Sources overlay title + labels
+  var _srt=document.querySelector('#ov-src .ov-ttl');if(_srt)_srt.textContent=t('sources_title');
+  var _srst=document.querySelector('#ov-src .stit');if(_srst)_srst.textContent=t('add_source');
+  var _srp=document.getElementById('src-inp');if(_srp)_srp.placeholder=LANG==='uk'?'@username або t.me/channel':'@username или t.me/channel';
+  var _srb=document.querySelector('#ov-src .btn.bg');if(_srb)_srb.textContent='+ '+(LANG==='uk'?'Додати':'Добавить');
+  // Patterns overlay
+  var _ptd=document.querySelector('#ov-pat .card > div:first-child');if(_ptd)_ptd.textContent=t('patterns_desc');
+  var _ptst=document.querySelectorAll('#ov-pat .stit');
+  if(_ptst[0])_ptst[0].textContent=t('auto_patterns');
+  if(_ptst[1])_ptst[1].textContent=t('manual_patterns');
+  var _pti=document.getElementById('pat-inp');if(_pti)_pti.placeholder=t('pattern_placeholder');
+  // Channel settings overlay labels
+  var _csst=document.querySelectorAll('#ov-chs .stit');
+  if(_csst[0])_csst[0].textContent=t('ov_autopost');
+  if(_csst[1])_csst[1].textContent=t('sub_section');
+  if(_csst[2])_csst[2].textContent=t('postbtn_section');
+  var _sb=document.getElementById('save-btn');if(_sb&&!_sb.disabled)_sb.textContent=t('save');
+  // Payment modal
+  var _pmt=document.getElementById('pay-modal-title');
+  var _ib=document.getElementById('pay-insuf-banner');
+  if(_ib){_ib.querySelector('div:first-child').textContent=t('insuf_title');_ib.querySelector('div:last-child').textContent=t('insuf_desc');}
+  // Admin overlay
+  var _ast=document.querySelectorAll('#ov-adm .stit');
+  if(_ast[0])_ast[0].textContent=t('general_stats');
+  if(_ast[1])_ast[1].textContent=t('balance_mgmt');
+  if(_ast[2])_ast[2].textContent=t('sub_mgmt');
+  if(_ast[3])_ast[3].textContent=t('broadcast_section');
+  if(_ast[4])_ast[4].textContent=t('recent_users');
+  var _asl=document.querySelectorAll('#ov-adm .ss4l');
+  if(_asl[0])_asl[0].textContent=t('admin_users');
+  if(_asl[1])_asl[1].textContent=t('admin_channels');
+  if(_asl[2])_asl[2].textContent=t('admin_posts');
+  if(_asl[3])_asl[3].textContent=t('admin_revenue');
+  // Re-render channels if loaded
+  if(CHANNELS.length)renderChannels();
+}
+
+async function toggleLang(){
+  LANG=LANG==='ru'?'uk':'ru';
+  applyLang();
+  try{await api('POST','/api/set_language',{lang:LANG});}catch(e){}
 }
 
 // ── CHANNELS ────────────────────────────────────────────────────────────────
@@ -697,7 +1109,7 @@ async function loadChannels(){
     fillPaySelect();
   }catch(e){
     console.error('channels error:',e);
-    document.getElementById('ch-list').innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">Помилка завантаження: '+e.message+'</div>';
+    document.getElementById('ch-list').innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">'+t('error_loading')+e.message+'</div>';
   }
 }
 
@@ -709,7 +1121,7 @@ const CH_ICONS=['📡','🗞','📺','📢','💬','🔔'];
 function renderChannels(){
   const el=document.getElementById('ch-list');
   if(!CHANNELS.length){
-    el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--mu);font-size:14px">🚀 Нет каналов. Добавьте первый!</div>';
+    el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--mu);font-size:14px">'+t('no_channels')+'</div>';
     return;
   }
   el.innerHTML=CHANNELS.map(ch=>{
@@ -719,7 +1131,7 @@ function renderChannels(){
     const isTrial=ch.subscription_status==='trial';
     const isActive=ch.subscription_status==='active';
     const isExpired=!isTrial&&!isActive; // restricted / pending / etc
-    const st=isTrial?'🧪 Пробний':isActive?'✅ Активний':'❌ Закінчилась';
+    const st=isTrial?t('trial_badge'):isActive?t('active_badge'):t('expired_badge');
     const badgeHtml=isTrial
       ?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.35)">'+st+'</span>'
       :isActive
@@ -731,46 +1143,46 @@ function renderChannels(){
       <div class="ch-body">
         <div style="background:rgba(240,90,90,.07);border:1px solid rgba(240,90,90,.2);border-radius:14px;padding:18px;text-align:center;margin-bottom:14px">
           <div style="font-size:28px;margin-bottom:8px">🔒</div>
-          <div style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:6px">Підписка закінчилась</div>
-          <div style="font-size:12px;color:var(--mu);line-height:1.5;margin-bottom:14px">Всі налаштування збережені.<br>Автопостинг зупинено до поповнення.</div>
-          <button class="btn bp" style="width:100%;font-size:14px;padding:14px" onclick="event.stopPropagation();buySlot(${ch.id})">💳 Оплатити підписку — $${CFG.price_per_slot||2}/міс</button>
+          <div style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:6px">${t('sub_expired')}</div>
+          <div style="font-size:12px;color:var(--mu);line-height:1.5;margin-bottom:14px">${t('sub_expired_desc')}</div>
+          <button class="btn bp" style="width:100%;font-size:14px;padding:14px" onclick="event.stopPropagation();buySlot(${ch.id})">${t('pay_sub')} — $${CFG.price_per_slot||2}/${LANG==='uk'?'міс':'мес'}</button>
         </div>
-        <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">🗑 Видалити канал</button>
+        <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">${t('delete_channel')}</button>
       </div>` : `
       <div class="ch-body">
         <div class="srow">
-          <div class="sbox"><div class="sv" style="color:var(--grn)">${q}</div><div class="sl">Черга</div></div>
-          <div class="sbox"><div class="sv">${s.autopost_ppd||1}/д</div><div class="sl">Постів</div></div>
-          <div class="sbox"><div class="sv" style="color:var(--acc2)">${ch.total_published||0}</div><div class="sl">Всього</div></div>
+          <div class="sbox"><div class="sv" style="color:var(--grn)">${q}</div><div class="sl">${t('queue')}</div></div>
+          <div class="sbox"><div class="sv">${s.autopost_ppd||1}/${LANG==='uk'?'д':'д'}</div><div class="sl">${t('posts_day')}</div></div>
+          <div class="sbox"><div class="sv" style="color:var(--acc2)">${ch.total_published||0}</div><div class="sl">${t('total')}</div></div>
         </div>
         <div class="qbar">
-          <div class="qbl"><span>Черга</span><span>${q}/5</span></div>
+          <div class="qbl"><span>${t('queue')}</span><span>${q}/5</span></div>
           <div class="btr"><div class="bfi" style="width:${qp}%"></div></div>
         </div>
         <div class="card" style="padding:4px 16px;margin-bottom:12px">
           <div class="sr tap" onclick="openCHS(${ch.id})">
-            <div class="sr-l"><div class="sr-t">⚙️ Налаштування</div><div class="sr-s">${s.autopost_from||'09:00'}–${s.autopost_to||'22:00'} · ${s.autopost_ppd||1}/д · ${s.channel_lang||'off'}</div></div>
+            <div class="sr-l"><div class="sr-t">${t('settings')}</div><div class="sr-s">${s.autopost_from||'09:00'}–${s.autopost_to||'22:00'} · ${s.autopost_ppd||1}/${LANG==='uk'?'д':'д'} · ${s.channel_lang||'off'}</div></div>
             <span class="sr-v">→</span>
           </div>
           <div class="sr tap" onclick="openSrc(${ch.id})">
-            <div class="sr-l"><div class="sr-t">🔗 Джерела і паттерни</div></div>
+            <div class="sr-l"><div class="sr-t">${t('sources_patterns')}</div></div>
             <span class="sr-v">→</span>
           </div>
           <div class="sr tap" onclick="openQueue(${ch.id})">
-            <div class="sr-l"><div class="sr-t">📋 Черга постів</div><div class="sr-s">${q} очікують</div></div>
+            <div class="sr-l"><div class="sr-t">${t('post_queue')}</div><div class="sr-s">${q} ${t('waiting')}</div></div>
             <span class="sr-v">${q} →</span>
           </div>
           <div class="sr">
             <div class="sr-l">
-              <div class="sr-t">📅 Підписка</div>
+              <div class="sr-t">${t('subscription')}</div>
               <div class="sr-s">${st}${ch.subscription_total_hours>0?' · '+d+'д '+ch.subscription_hours+'г':''}</div>
             </div>
-            ${!isActive?`<button class="btn bp" style="padding:8px 14px;font-size:11px;width:auto" onclick="event.stopPropagation();buySlot(${ch.id})">Купити $${CFG.price_per_slot||2}</button>`:`<span class="sr-v" style="color:var(--grn)">✓ Активна</span>`}
+            ${!isActive?`<button class="btn bp" style="padding:8px 14px;font-size:11px;width:auto" onclick="event.stopPropagation();buySlot(${ch.id})">${t('buy')} $${CFG.price_per_slot||2}</button>`:`<span class="sr-v" style="color:var(--grn)">${t('active_sub')}</span>`}
           </div>
           <div class="sr">
             <div class="sr-l">
-              <div class="sr-t">🔄 Автопродовження підписки</div>
-              <div class="sr-s" style="font-size:10px;color:var(--mu);line-height:1.4;margin-top:3px">За 1 год до закінчення автоматично<br>списує $${CFG.price_per_slot||2} з балансу і продовжує на 30 днів</div>
+              <div class="sr-t">${t('autorenew')}</div>
+              <div class="sr-s" style="font-size:10px;color:var(--mu);line-height:1.4;margin-top:3px">${t('autorenew_desc')}</div>
             </div>
             <label class="tg" onclick="event.stopPropagation()">
               <input type="checkbox" ${s.autorenew_enabled?'checked':''} onchange="toggleAutorenew(${ch.id},this)">
@@ -779,9 +1191,9 @@ function renderChannels(){
           </div>
         </div>
         <div class="brow" style="margin-bottom:10px">
-          <button class="btn bg" style="flex:1" onclick="parseNow(${ch.id},this)">🔄 Парсити пости</button>
+          <button class="btn bg" style="flex:1" onclick="parseNow(${ch.id},this)">${t('parse_posts')}</button>
         </div>
-        <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">🗑 Видалити канал</button>
+        <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">${t('delete_channel')}</button>
       </div>`;
 
     return `
@@ -795,9 +1207,9 @@ function renderChannels(){
           <div style="font-size:11px;color:var(--mu);margin-top:1px;margin-bottom:4px">@${ch.username||''}</div>
           <div class="ch-mt">
             ${badgeHtml}
-            ${!isExpired&&s.autopost_enabled?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(45,212,160,.15);color:#2dd4a0;border:1px solid rgba(45,212,160,.3)">🟢 Автопост</span>':''}
-            ${!isExpired&&ch.subscription_total_hours>0?'<span>'+d+'д '+ch.subscription_hours+'г</span>':''}
-            ${isExpired?'<span style="font-size:10px;color:var(--red)">⚠️ Потрібна оплата</span>':''}
+            ${!isExpired&&s.autopost_enabled?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(45,212,160,.15);color:#2dd4a0;border:1px solid rgba(45,212,160,.3)">'+t('autopost')+'</span>':''}
+            ${!isExpired&&ch.subscription_total_hours>0?'<span>'+d+(LANG==='uk'?'д ':'д ')+ch.subscription_hours+(LANG==='uk'?'г':'ч')+'</span>':''}
+            ${isExpired?'<span style="font-size:10px;color:var(--red)">'+t('need_pay')+'</span>':''}
           </div>
         </div>
         <span class="ch-cv">⌄</span>
@@ -823,23 +1235,10 @@ async function loadChPhoto(chId){
 }
 
 function toggleCh(id){document.getElementById('cc'+id)?.classList.toggle('open')}
-async function parseNow(chId, btn){
-  const orig = btn.textContent;
-  btn.textContent = '⏳ Запускаю...'; btn.disabled = true;
-  try {
-    await api('POST', '/api/channel/'+chId+'/parse', {});
-    toast('🔄 Парсинг запущен! Посты появятся через ~1 мин');
-    btn.textContent = '✅ Запущено';
-    setTimeout(()=>{ btn.textContent=orig; btn.disabled=false; }, 5000);
-  } catch(e) {
-    toast('Помилка: '+e.message);
-    btn.textContent = orig; btn.disabled = false;
-  }
-}
 async function delCh(id,name){
-  if(!confirm('Видалити '+name+'?')) return;
-  try{await api('DELETE','/api/channel/'+id);toast('Видалено');await loadChannels()}
-  catch(e){toast('Помилка: '+e.message)}
+  if(!confirm(t('confirm_delete')+' '+name+'?')) return;
+  try{await api('DELETE','/api/channel/'+id);toast(t('deleted'));await loadChannels()}
+  catch(e){toast(t('error')+e.message)}
 }
 
 // ── CH SETTINGS ──────────────────────────────────────────────────────────────
@@ -868,10 +1267,10 @@ function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR
 function prmpt(k,lbl,el){const v=prompt(lbl,CUR_S[k]||'');if(v===null)return;CUR_S[k]=v;document.getElementById(el).textContent=v||'—'}
 async function saveSettings(){
   if(!CUR_CH)return;
-  const btn=document.getElementById('save-btn');btn.textContent='Сохраняю...';btn.disabled=true;
-  try{await api('POST','/api/channel/'+CUR_CH+'/settings',CUR_S);toast('✅ Сохранено');closeOv('ov-chs');await loadChannels()}
-  catch(e){toast('Помилка: '+e.message)}
-  btn.textContent='Сохранить';btn.disabled=false;
+  const btn=document.getElementById('save-btn');btn.textContent=t('saving');btn.disabled=true;
+  try{await api('POST','/api/channel/'+CUR_CH+'/settings',CUR_S);toast(t('saved'));closeOv('ov-chs');await loadChannels()}
+  catch(e){toast(t('error')+e.message)}
+  btn.textContent=t('save');btn.disabled=false;
 }
 
 // ── QUEUE ────────────────────────────────────────────────────────────────────
@@ -884,16 +1283,16 @@ async function openQueue(id){
     Q_POSTBTN=(!Array.isArray(_qr)&&_qr.postbtn)||{};
     renderQ()
   }
-  catch(e){toast('Помилка черги')}
+  catch(e){toast(t('error')+e.message)}
 }
 function renderQ(){
   const wrap=document.getElementById('q-wrap');
-  document.getElementById('q-chip').textContent=Q_DATA.length+'/5 постов';
-  if(!Q_DATA.length){wrap.innerHTML='<div style="text-align:center;padding:50px 20px;color:var(--mu);font-size:15px">🎉 Очередь пуста</div>';return}
+  document.getElementById('q-chip').textContent=Q_DATA.length+'/5 '+t('posts_count');
+  if(!Q_DATA.length){wrap.innerHTML='<div style="text-align:center;padding:50px 20px;color:var(--mu);font-size:15px">'+t('queue_empty')+'</div>';return}
   wrap.innerHTML='';
   Q_DATA.forEach((p,i)=>{
     const d=document.createElement('div');d.className='q-post';d.style.animationDelay=(i*.07)+'s';d.dataset.id=p.id;
-    const miLabel={photo:'📸 Фото',video:'🎬 Видео',album:'📷 Альбом',animation:'🎞 GIF'}[p.media_type]||'📄 Текст';
+    const miLabel={photo:t('photo'),video:t('video'),album:t('album'),animation:t('gif')}[p.media_type]||t('text_only');
     var albumHtml='';
     if(p.media_type==='album'&&p.media_files_json){
       try{
@@ -925,7 +1324,7 @@ function renderQ(){
     // Open video/post in Telegram via original_url
     if(!albumHtml){
       if(p.thumb_url){
-        var _playBadge=_isVid2?'<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);border-radius:20px;padding:3px 8px;font-size:12px;color:#fff">▶ Відео</div>':'';
+        var _playBadge=_isVid2?'<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);border-radius:20px;padding:3px 8px;font-size:12px;color:#fff">'+t('video_badge')+'</div>':'';
         thumbHtml='<div data-url="'+(p.original_url||'')+'" style="margin-bottom:10px;border-radius:12px;overflow:hidden;position:relative'+(_isVid2?';cursor:pointer':'')+'"'
           +(_isVid2?' onclick="openTgUrl(this.dataset.url)"':'')+'>'
           +'<img src="'+p.thumb_url+'" style="width:100%;max-height:240px;object-fit:cover;display:block">'
@@ -940,16 +1339,16 @@ function renderQ(){
           +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;background:linear-gradient(135deg,rgba(26,26,46,.7),rgba(22,33,62,.7))">'
           +'<div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-size:18px">▶</div>'
           +'</div>'
-          +'<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);border-radius:20px;padding:3px 8px;font-size:12px;color:#fff">▶ Відео</div>'
+          +'<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);border-radius:20px;padding:3px 8px;font-size:12px;color:#fff">'+t('video_badge')+'</div>'
           +'</div>';
       }
     }
     d.innerHTML='';
     if(thumbHtml){var _th=document.createElement('div');_th.innerHTML=thumbHtml;d.appendChild(_th.firstChild||_th);}
     var _qm=document.createElement('div');_qm.className='q-media';_qm.innerHTML=miLabel+(p.source?' · <b>@'+p.source+'</b>':'');d.appendChild(_qm);
-    var _qt=document.createElement('div');_qt.className='q-text';_qt.innerHTML=(p.text||'<i style="color:var(--mu)">Только медиа</i>');d.appendChild(_qt);
+    var _qt=document.createElement('div');_qt.className='q-text';_qt.innerHTML=(p.text||'<i style="color:var(--mu)">'+t('media_only_label')+'</i>');d.appendChild(_qt);
     if(Q_POSTBTN&&Q_POSTBTN.url){var _pb=document.createElement('span');_pb.style.cssText='display:block;margin-top:8px;font-size:13px';var _pba=document.createElement('a');_pba.href=Q_POSTBTN.url;_pba.style.cssText='color:var(--acc2);font-weight:700;text-decoration:none';_pba.textContent=(Q_POSTBTN.label||Q_POSTBTN.url);_pba.onclick=function(e){e.preventDefault();if(window.Telegram&&window.Telegram.WebApp)Telegram.WebApp.openLink(Q_POSTBTN.url);};_pb.appendChild(_pba);d.appendChild(_pb);}
-    var _qa=document.createElement('div');_qa.className='q-actions';_qa.innerHTML='<button class="q-btn q-ok" onclick="qAct('+p.id+',\'publish\',this)">✅ Опубликовать</button><button class="q-btn q-sk" onclick="qAct('+p.id+',\'skip\',this)">❌ Пропустить</button>';d.appendChild(_qa);
+    var _qa=document.createElement('div');_qa.className='q-actions';_qa.innerHTML='<button class="q-btn q-ok" onclick="qAct('+p.id+',\'publish\',this)">'+t('publish')+'</button><button class="q-btn q-sk" onclick="qAct('+p.id+',\'skip\',this)">'+t('skip')+'</button>';d.appendChild(_qa);
     wrap.appendChild(d);
   });
 }
@@ -969,8 +1368,8 @@ async function qAct(id,action,btn){
     await api('POST','/api/queue/'+id+'/action',{action});
     Q_DATA=Q_DATA.filter(p=>p.id!==id);
     setTimeout(()=>{renderQ();loadChannels();},310);
-    if(action==='publish')toast('✅ Опубликовано!');
-  }catch(e){delete post.dataset.busy;post.classList.remove('ok-out','sk-out');toast('Помилка: '+e.message)}
+    if(action==='publish')toast(t('published'));
+  }catch(e){delete post.dataset.busy;post.classList.remove('ok-out','sk-out');toast(t('error')+e.message)}
 }
 
 async function openSrc(id){
@@ -979,15 +1378,15 @@ async function openSrc(id){
   try{
     const srcs=await api('GET','/api/channel/'+id+'/sources');
     const el=document.getElementById('src-list');
-    if(!srcs.length){el.innerHTML='<div style="color:var(--mu);font-size:13px;padding:12px 0">Нет источников</div>';return}
+    if(!srcs.length){el.innerHTML='<div style="color:var(--mu);font-size:13px;padding:12px 0">'+t('no_sources')+'</div>';return}
     el.innerHTML=srcs.map(function(s){
       const hasSig=s.signature&&s.signature.length>2;
       const sigHtml=hasSig
-        ?'<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">🤖 Авто-паттерн</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">✕ Скинути</button></div>'
-        :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">⏳ Паттерн ще шукається...</div></div>';
-      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||('@'+s.username))+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">@'+s.username+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\'@'+s.username+'\')">✏️ Патерни</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
+        ?'<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">'+t('auto_pattern')+'</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">'+t('reset_pattern')+'</button></div>'
+        :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">'+t('pattern_searching')+'</div></div>';
+      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||('@'+s.username))+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">@'+s.username+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\'@'+s.username+'\')">✏️ '+t('patterns_title')+'</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
     }).join('');
-  }catch(e){toast('Помилка')}
+  }catch(e){toast(t('error')+e.message)}
 }
 
 async function addSrc(){
@@ -995,45 +1394,45 @@ async function addSrc(){
   const btn=document.querySelector('#ov-src .btn.bg');
   let un=inp.value.trim();
   un=un.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
-  if(!un){toast('Введи username джерела');return;}
+  if(!un){toast(t('enter_source'));return;}
   const orig=btn?btn.textContent:'';
   if(btn){btn.textContent='⏳...';btn.disabled=true;}
   try{
     await api('POST','/api/channel/'+CUR_CH+'/sources',{username:un});
     inp.value='';
-    toast('✅ Джерело @'+un+' додано! Шукаємо паттерн...');
+    toast(t('source_added'));
     await openSrc(CUR_CH);
     await loadChannels();
   }catch(e){
     let msg=e.message;
     try{const p=JSON.parse(msg);msg=p.error||p.message||msg;}catch{}
-    toast('Помилка: '+msg);
+    toast(t('error')+msg);
   }
   if(btn){btn.textContent=orig;btn.disabled=false;}
 }
 
 async function resetSig(srcId){
-  if(!confirm('Скинути авто-паттерн?'))return;
-  try{await api('POST','/api/source/'+srcId+'/reset_sig',{});toast('✅ Паттерн скинуто');openSrc(CUR_CH);}
-  catch(e){toast('Помилка: '+e.message)}
+  if(!confirm(t('reset_pattern_confirm')))return;
+  try{await api('POST','/api/source/'+srcId+'/reset_sig',{});toast(t('pattern_reset'));openSrc(CUR_CH);}
+  catch(e){toast(t('error')+e.message)}
 }
 
 async function delSrc(id){
-  if(!confirm('Видалити джерело?'))return;
-  try{await api('DELETE','/api/source/'+id);toast('Удалено');openSrc(CUR_CH);}
-  catch(e){toast('Помилка: '+e.message)}
+  if(!confirm(t('delete_source')))return;
+  try{await api('DELETE','/api/source/'+id);toast(t('deleted'));openSrc(CUR_CH);}
+  catch(e){toast(t('error')+e.message)}
 }
 
 async function openPat(srcId,name){
-  CUR_SRC=srcId;document.getElementById('ov-pat-t').textContent='Паттерны '+name;openOv('ov-pat');
+  CUR_SRC=srcId;document.getElementById('ov-pat-t').textContent=t('patterns_title')+' '+name;openOv('ov-pat');
   try{
     const srcs=await api('GET','/api/channel/'+CUR_CH+'/sources');
     const src=srcs.find(function(s){return s.id===srcId;});if(!src)return;
     const aEl=document.getElementById('auto-pats'),mEl=document.getElementById('man-pats');
     const autos=(src.patterns||[]).filter(function(p){return p.auto;}),mans=(src.patterns||[]).filter(function(p){return !p.auto;});
-    aEl.innerHTML=autos.length?autos.map(function(p){return '<div class="pat-tag pat-auto">'+p.pattern+'</div>';}).join(''):'<span style="font-size:12px;color:var(--mu)">Ещё не найдены</span>';
+    aEl.innerHTML=autos.length?autos.map(function(p){return '<div class="pat-tag pat-auto">'+p.pattern+'</div>';}).join(''):'<span style="font-size:12px;color:var(--mu)">'+t('not_found_yet')+'</span>';
     mEl.innerHTML=mans.length?mans.map(function(p){return '<div class="pat-tag">'+p.pattern+' <span class="pat-rm" onclick="delPat('+p.id+',this)">×</span></div>';}).join(''):'';
-  }catch(e){toast('Помилка')}
+  }catch(e){toast(t('error')+e.message)}
 }
 
 async function addPat(){
@@ -1043,13 +1442,13 @@ async function addPat(){
     inp.value='';
     const tag=document.createElement('div');tag.className='pat-tag';
     tag.innerHTML=pat+' <span class="pat-rm" onclick="delPat('+r.id+',this)">×</span>';
-    document.getElementById('man-pats').appendChild(tag);toast('✅ Добавлен');
-  }catch(e){toast('Помилка: '+e.message)}
+    document.getElementById('man-pats').appendChild(tag);toast(t('pattern_added'));
+  }catch(e){toast(t('error')+e.message)}
 }
 
 async function delPat(id,el){
-  try{await api('DELETE','/api/pattern/'+id);el.closest('.pat-tag').remove();toast('Удалён');}
-  catch(e){toast('Помилка: '+e.message)}
+  try{await api('DELETE','/api/pattern/'+id);el.closest('.pat-tag').remove();toast(t('pattern_deleted'));}
+  catch(e){toast(t('error')+e.message)}
 }
 
 async function loadFin(){
@@ -1060,24 +1459,25 @@ async function loadFin(){
     if(ME)ME.balance=d.balance;
     const active=CHANNELS.filter(function(c){return c.subscription_status==='active'||c.subscription_status==='trial';});
     const paid=active.filter(function(c){return c.subscription_status==='active';});
-    document.getElementById('fin-sub').textContent=active.length+' слот(ів) · ~$'+(paid.length*(CFG.price_per_slot||2)).toFixed(0)+'/міс';
+    var _mo=LANG==='uk'?'міс':'мес';
+    document.getElementById('fin-sub').textContent=active.length+' '+t('slots_count')+' · ~$'+(paid.length*(CFG.price_per_slot||2)).toFixed(0)+'/'+_mo;
     document.getElementById('fin-slots').innerHTML=CHANNELS.map(function(ch){
       const isTrial=ch.subscription_status==='trial';
       const isActive=ch.subscription_status==='active';
       const isExp=!isTrial&&!isActive;
       const badge=isTrial
-        ?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.3)">🧪 Пробний</span>'
+        ?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.3)">'+t('trial_badge')+'</span>'
         :isActive
-        ?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(45,212,160,.15);color:#2dd4a0">✅ Активний</span>'
-        :'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(240,90,90,.18);color:#f05a5a;border:1px solid rgba(240,90,90,.35)">❌ Закінчилась</span>';
+        ?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(45,212,160,.15);color:#2dd4a0">'+t('active_badge')+'</span>'
+        :'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(240,90,90,.18);color:#f05a5a;border:1px solid rgba(240,90,90,.35)">'+t('expired_badge')+'</span>';
       const buyBtn=isExp||isTrial
-        ?'<button class="btn bp" style="padding:6px 12px;font-size:11px;width:auto" onclick="buySlot('+ch.id+')">Оплатити $'+(CFG.price_per_slot||2)+'</button>'
-        :'<span class="sr-v" style="color:var(--grn)">$'+(CFG.price_per_slot||2)+'/міс</span>';
-      return '<div class="sr"><div class="sr-l"><div class="sr-t">'+(ch.title||ch.username)+'</div><div class="sr-s" style="display:flex;align-items:center;gap:6px;margin-top:4px">'+badge+' <span>'+(ch.subscription_days||0)+' днів</span></div></div>'+buyBtn+'</div>';
-    }).join('')+'<div class="sr tap" onclick="openBuySlot()"><div class="sr-l"><div class="sr-t">+ Новий слот</div></div><span class="sr-v">$'+(CFG.price_per_slot||2)+'/міс →</span></div>';
+        ?'<button class="btn bp" style="padding:6px 12px;font-size:11px;width:auto" onclick="buySlot('+ch.id+')">'+t('pay_sub').replace('💳 ','')+' $'+(CFG.price_per_slot||2)+'</button>'
+        :'<span class="sr-v" style="color:var(--grn)">$'+(CFG.price_per_slot||2)+'/'+_mo+'</span>';
+      return '<div class="sr"><div class="sr-l"><div class="sr-t">'+(ch.title||ch.username)+'</div><div class="sr-s" style="display:flex;align-items:center;gap:6px;margin-top:4px">'+badge+' <span>'+(ch.subscription_days||0)+(LANG==='uk'?' днів':' дней')+'</span></div></div>'+buyBtn+'</div>';
+    }).join('')+'<div class="sr tap" onclick="openBuySlot()"><div class="sr-l"><div class="sr-t">'+t('new_slot')+'</div></div><span class="sr-v">$'+(CFG.price_per_slot||2)+'/'+_mo+' →</span></div>';
     document.getElementById('fin-hist').innerHTML=!d.transactions||!d.transactions.length
-      ?'<div style="font-size:13px;color:var(--mu);padding:13px 0">Історія порожня</div>'
-      :d.transactions.map(function(t){const plus=t.amount>0;return '<div class="hi"><div class="hd" style="background:'+(plus?'var(--grn)':'var(--red)')+'"></div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+(t.description||t.type)+'</div><div style="font-size:11px;color:var(--mu)">'+(t.created_at||'').substring(0,10)+'</div></div><div style="font-size:14px;font-weight:700;color:'+(plus?'var(--grn)':'var(--red)')+'">'+(plus?'+':'')+'$'+Math.abs(t.amount).toFixed(2)+'</div></div>';}).join('');
+      ?'<div style="font-size:13px;color:var(--mu);padding:13px 0">'+t('history_empty')+'</div>'
+      :d.transactions.map(function(tx){const plus=tx.amount>0;return '<div class="hi"><div class="hd" style="background:'+(plus?'var(--grn)':'var(--red)')+'"></div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+(tx.description||tx.type)+'</div><div style="font-size:11px;color:var(--mu)">'+(tx.created_at||'').substring(0,10)+'</div></div><div style="font-size:14px;font-weight:700;color:'+(plus?'var(--grn)':'var(--red)')+'">'+(plus?'+':'')+'$'+Math.abs(tx.amount).toFixed(2)+'</div></div>';}).join('');
   }catch(e){console.error(e)}
 }
 
@@ -1090,8 +1490,8 @@ async function loadRef(){
     document.getElementById('ref-tot').textContent=d.stats&&d.stats.total?d.stats.total:0;
     document.getElementById('ref-earn').textContent='$'+((d.stats&&d.stats.earned)||0).toFixed(2);
     document.getElementById('ref-list').innerHTML=!d.referrals||!d.referrals.length
-      ?'<div style="font-size:13px;color:var(--mu);padding:13px 0">Пока нет рефералов</div>'
-      :d.referrals.map(function(r){return '<div class="hi"><div class="hd" style="background:'+(r.status==='paid'?'var(--grn)':'var(--mu)')+'"></div><div style="flex:1"><div style="font-size:13px;font-weight:600">@'+(r.username||r.first_name||'user')+'</div><div style="font-size:11px;color:var(--mu)">'+(r.created_at||'').substring(0,10)+' · '+(r.status==='paid'?'оплачений':'тріал')+'</div></div><div style="font-size:14px;font-weight:700;color:'+(r.status==='paid'?'var(--grn)':'var(--mu)')+'">'+(r.status==='paid'?'+$'+parseFloat(r.bonus_amount||0).toFixed(2):'$0')+'</div></div>';}).join('');
+      ?'<div style="font-size:13px;color:var(--mu);padding:13px 0">'+t('no_referrals')+'</div>'
+      :d.referrals.map(function(r){return '<div class="hi"><div class="hd" style="background:'+(r.status==='paid'?'var(--grn)':'var(--mu)')+'"></div><div style="flex:1"><div style="font-size:13px;font-weight:600">@'+(r.username||r.first_name||'user')+'</div><div style="font-size:11px;color:var(--mu)">'+(r.created_at||'').substring(0,10)+' · '+(r.status==='paid'?t('paid'):(LANG==='uk'?'тріал':'триал'))+'</div></div><div style="font-size:14px;font-weight:700;color:'+(r.status==='paid'?'var(--grn)':'var(--mu)')+'">'+(r.status==='paid'?'+$'+parseFloat(r.bonus_amount||0).toFixed(2):'$0')+'</div></div>';}).join('');
   }catch(e){}
 }
 
@@ -1099,7 +1499,7 @@ function copyRef(){
   const url=document.getElementById('ref-code-tx').textContent;
   navigator.clipboard&&navigator.clipboard.writeText(url);
   const l=document.getElementById('ref-copy-lbl');
-  l.textContent='✓ Скопировано';setTimeout(function(){l.textContent='📋 Копировать';},2000);
+  l.textContent='✓';setTimeout(function(){l.textContent='📋';},2000);
 }
 
 function shareRef(){
@@ -1129,25 +1529,23 @@ function fillPaySelect(){/* channel select removed */}
 function openBuySlot(){
   const price=CFG.price_per_slot||2;
   if(ME&&ME.balance>=price){
-    if(confirm('Купити слот за $'+price.toFixed(2)+' з балансу ($'+(ME.balance||0).toFixed(2)+')?')){
+    if(confirm(t('buy_slot_confirm',{price:price.toFixed(2),balance:(ME.balance||0).toFixed(2)}))){
       api('POST','/api/pay/from_balance',{channel_id:null,days:30})
-        .then(function(r){toast('✅ Слот оплачено!');ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);loadChannels();})
-        .catch(function(e){toast('Помилка: '+e.message);});
+        .then(function(r){toast(t('slot_paid'));ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);loadChannels();})
+        .catch(function(e){toast(t('error')+e.message);});
     }
     return;
   }
-  // Insufficient balance — redirect to Finance
-  toast('⚠️ Недостатньо коштів. Поповніть баланс!',3000);
-  setTimeout(function(){goTo('s-fin','Фінанси');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},300);},600);
+  toast(t('insuf_balance'),3000);
+  setTimeout(function(){goTo('s-fin');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},300);},600);
 }
 
 function buySlot(chId){
   const price=CFG.price_per_slot||2;
   if(ME&&ME.balance>=price){confirmSlotFromBalance(chId,price);return;}
-  // Insufficient balance — redirect to Finance tab with notification
-  toast('⚠️ Недостатньо коштів — поповніть баланс!',3200);
+  toast(t('insuf_balance'),3200);
   setTimeout(function(){
-    goTo('s-fin','Фінанси');setNav('nfin');
+    goTo('s-fin');setNav('nfin');
     setTimeout(function(){
       const hero=document.querySelector('.bal-hero');
       if(hero){hero.style.boxShadow='0 0 0 2.5px var(--red)';setTimeout(function(){hero.style.boxShadow='';},2500);}
@@ -1163,30 +1561,29 @@ async function toggleAutorenew(chId,cb){
   try{
     await api('POST','/api/channel/'+chId+'/settings',s);
     if(ch.settings)ch.settings.autorenew_enabled=cb.checked;
-    toast(cb.checked?'🔄 Автопродовження підписки увімкнено':'🔕 Автопродовження підписки вимкнено');
+    toast(cb.checked?t('autorenew_on'):t('autorenew_off'));
   }catch(e){
-    cb.checked=!cb.checked; // revert on error
-    toast('Помилка: '+e.message);
+    cb.checked=!cb.checked;
+    toast(t('error')+e.message);
   }
 }
 
 async function confirmSlotFromBalance(chId,price){
   const ch=CHANNELS.find(function(c){return c.id===chId;});
   const name=ch?'@'+(ch.username||ch.title):'канал';
-  if(!confirm('Активувати '+name+' за $'+price.toFixed(2)+' з балансу ($'+(ME&&ME.balance||0).toFixed(2)+')?'))return;
+  if(!confirm(t('activate_confirm',{name:name,price:price.toFixed(2),balance:(ME&&ME.balance||0).toFixed(2)})))return;
   try{
     const r=await api('POST','/api/pay/from_balance',{channel_id:chId,days:30});
-    toast('✅ Підписку активовано для '+name+'!');
+    toast(t('sub_activated',{name:name}));
     ME.balance=r.new_balance;
     document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);
     await loadChannels();
   }catch(e){
     let msg=e.message;
     try{const p=JSON.parse(msg);msg=p.message||msg;}catch{}
-    // If insufficient balance → redirect to Finance
     if(msg.indexOf('Недостаточно')>=0||msg.indexOf('Недостатньо')>=0||msg.indexOf('Insufficient')>=0||msg.indexOf('insufficient')>=0){
-      toast('⚠️ Недостатньо коштів — поповніть баланс!',3200);
-      setTimeout(function(){goTo('s-fin','Фінанси');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},350);},700);
+      toast(t('insuf_balance'),3200);
+      setTimeout(function(){goTo('s-fin');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},350);},700);
     } else {
       toast('❌ '+msg);
     }
@@ -1198,8 +1595,8 @@ function openPayModal(type, showInsufficientBanner){
   document.getElementById('pay-card-block').style.display=type==='card'?'block':'none';
   document.getElementById('pay-invoice-block').style.display='none';
   const cryptoBtn=document.getElementById('pay-crypto-btn');
-  if(cryptoBtn){cryptoBtn.style.display='';cryptoBtn.disabled=false;cryptoBtn.textContent='₿ Створити рахунок';}
-  document.getElementById('pay-modal-title').textContent=type==='crypto'?'Поповнення балансу':'Поповнення карткою';
+  if(cryptoBtn){cryptoBtn.style.display='';cryptoBtn.disabled=false;cryptoBtn.textContent=t('create_invoice');}
+  document.getElementById('pay-modal-title').textContent=type==='crypto'?t('top_up_balance'):t('top_up_card');
   const mgr=CFG.manager||'manager';
   const mgrEl=document.getElementById('pay-manager-link');
   if(mgrEl) mgrEl.textContent='@'+mgr;
@@ -1216,19 +1613,18 @@ function closePayModal(e){
 
 async function doCryptoPay(){
   const amount=parseFloat(document.getElementById('pay-amount').value);
-  if(!amount||amount<1){toast('Введи суму (мінімум $1)');return;}
+  if(!amount||amount<1){toast(t('enter_amount'));return;}
   const btn=document.getElementById('pay-crypto-btn');
-  btn.textContent='Створюю рахунок...';btn.disabled=true;
+  btn.textContent=t('creating_invoice');btn.disabled=true;
   try{
-    // channel_id is null — this is a balance top-up, not direct channel payment
     const r=await api('POST','/api/pay/crypto',{amount:amount,channel_id:null,days:30});
     CUR_INVOICE=r.invoice_id;
     document.getElementById('pay-link-btn').dataset.url=r.pay_url;
     document.getElementById('pay-invoice-block').style.display='block';
     btn.style.display='none';
-    toast('✅ Рахунок створено!');
-  }catch(e){toast('Помилка: '+e.message);}
-  btn.textContent='₿ Створити рахунок';btn.disabled=false;
+    toast(t('invoice_ok'));
+  }catch(e){toast(t('error')+e.message);}
+  btn.textContent=t('create_invoice');btn.disabled=false;
 }
 
 function openPayLink(){
@@ -1238,20 +1634,19 @@ function openPayLink(){
 }
 
 async function checkInvoice(){
-  if(!CUR_INVOICE){toast('Немає активного рахунку');return;}
+  if(!CUR_INVOICE)return;
   try{
     const r=await api('GET','/api/pay/check/'+CUR_INVOICE);
     if(r.paid){
-      toast('🎉 Оплата пройшла! Баланс поповнено.');
+      toast(t('payment_ok'));
       document.getElementById('pay-modal').classList.remove('on');
       const me=await api('GET','/api/me');
       document.getElementById('tb-bal').textContent='$'+me.balance.toFixed(2);
       ME=me;
       await loadChannels();
-      // If we're on finance screen, reload it too
       if(document.getElementById('s-fin').classList.contains('on')) await loadFin();
-    }else{toast('Оплата ще не отримана. Спробуй через хвилину.');}
-  }catch(e){toast('Помилка перевірки');}
+    }else{toast(t('payment_pending'));}
+  }catch(e){toast(t('error')+e.message);}
 }
 
 function openManager(){
@@ -1262,8 +1657,8 @@ function openManager(){
 async function reprocessSig(chId){
   try{
     await api('POST','/api/channel/'+chId+'/reprocess_sig',{});
-    toast('🧹 Паттерн застосовано до всіх постів!');
-  }catch(e){toast('Помилка: '+e.message)}
+    toast(t('pattern_applied'));
+  }catch(e){toast(t('error')+e.message)}
 }
 function openTgUrl(url){
   if(!url)return;
@@ -1274,11 +1669,11 @@ function openTgUrl(url){
 }
 async function parseNow(chId,btn){
   const orig=btn.textContent;
-  btn.textContent='⏳ Запускаю...';btn.disabled=true;
+  btn.textContent=t('launching');btn.disabled=true;
   try{
     await api('POST','/api/channel/'+chId+'/parse',{});
-    toast('🔄 Парсинг запущено! Пости з\'являться за ~1 хв');
-    btn.textContent='✅ Запущено';
+    toast(t('parsing_launched'));
+    btn.textContent=t('launched');
     // Refresh queue count after 90 seconds
     setTimeout(async function(){
       btn.textContent=orig;btn.disabled=false;
@@ -1286,9 +1681,10 @@ async function parseNow(chId,btn){
     },90000);
     // Also refresh after 10s (quick posts)
     setTimeout(async function(){await loadChannels();},10000);
-  }catch(e){toast('Помилка: '+e.message);btn.textContent=orig;btn.disabled=false;}
+  }catch(e){toast(t('error')+e.message);btn.textContent=orig;btn.disabled=false;}
 }
 
+var _admSearchTimer=null;
 async function loadAdminData(){
   try{
     const d=await api('GET','/api/admin/stats');
@@ -1296,11 +1692,33 @@ async function loadAdminData(){
     document.getElementById('adm-c').textContent=d.total_channels||0;
     document.getElementById('adm-p').textContent=d.total_published||0;
     document.getElementById('adm-r').textContent='$'+(d.total_revenue||0).toFixed(0);
+    // Update search placeholder
+    var _si=document.getElementById('adm-search');if(_si)_si.placeholder=t('search_placeholder');
+    var _ut=document.getElementById('adm-users-title');if(_ut)_ut.textContent=t('recent_users');
     const users=await api('GET','/api/admin/users');
-    document.getElementById('adm-users').innerHTML=users.slice(0,20).map(function(u){
-      return '<div class="adm-ur" onclick="prefAdm('+u.telegram_id+')"><div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#7c5af0);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">👤</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@'+(u.username||u.first_name||u.telegram_id)+'</div><div style="font-size:11px;color:var(--mu)">ID: '+u.telegram_id+'</div></div><div style="font-size:14px;font-weight:700;color:var(--grn)">$'+(u.balance||0).toFixed(2)+'</div></div>';
-    }).join('');
-  }catch(e){toast('Помилка: '+e.message);}
+    renderAdmUsers(users);
+  }catch(e){toast(t('error')+e.message);}
+}
+function renderAdmUsers(users){
+  document.getElementById('adm-users').innerHTML=users.slice(0,30).map(function(u){
+    var chCount=u.channels_count||u.channels||0;
+    var blocked=u.is_blocked||false;
+    return '<div class="adm-ur" onclick="prefAdm('+u.telegram_id+')">'
+      +'<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#7c5af0);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+(blocked?'🚫':'👤')+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@'+(u.username||u.first_name||u.telegram_id)+'</div>'
+      +'<div style="font-size:11px;color:var(--mu)">ID: '+u.telegram_id+(chCount?' · '+chCount+' '+t('user_channels'):'')+'</div></div>'
+      +'<div style="font-size:14px;font-weight:700;color:var(--grn)">$'+(u.balance||0).toFixed(2)+'</div></div>';
+  }).join('')||'<div style="color:var(--mu);padding:13px 0;font-size:13px">—</div>';
+}
+function admSearch(q){
+  clearTimeout(_admSearchTimer);
+  _admSearchTimer=setTimeout(async function(){
+    if(!q.trim()){loadAdminData();return;}
+    try{
+      var users=await api('GET','/api/admin/users?q='+encodeURIComponent(q.trim()));
+      renderAdmUsers(users);
+    }catch(e){}
+  },400);
 }
 
 function prefAdm(id){document.getElementById('adm-tid').value=id;admFind();}
@@ -1311,45 +1729,45 @@ async function admFind(){
     ADM_U=await api('GET','/api/admin/user/'+tid);
     document.getElementById('adm-found').style.display='block';
     document.getElementById('adm-fn').textContent='@'+(ADM_U.username||ADM_U.first_name||ADM_U.telegram_id);
-    document.getElementById('adm-fi').textContent='ID: '+ADM_U.telegram_id+' · '+(ADM_U.channels&&ADM_U.channels.length||0)+' каналов';
+    document.getElementById('adm-fi').textContent='ID: '+ADM_U.telegram_id+' · '+(ADM_U.channels&&ADM_U.channels.length||0)+' '+t('user_channels');
     document.getElementById('adm-fb').textContent='$'+(ADM_U.balance||0).toFixed(2);
-  }catch(e){toast('Не знайдено');}
+  }catch(e){toast(t('error')+'Not found');}
 }
 
 async function admBal(){
   if(!ADM_U)return;
   const delta=parseFloat(document.getElementById('adm-delta').value);
-  const note=document.getElementById('adm-note').value.trim()||'Ручне змінення (admin)';
-  if(!delta){toast('Введи суму');return;}
+  const note=document.getElementById('adm-note').value.trim()||(LANG==='uk'?'Ручне змінення (admin)':'Ручное изменение (admin)');
+  if(!delta){toast(t('enter_amount'));return;}
   try{
     const r=await api('POST','/api/admin/balance',{telegram_id:ADM_U.telegram_id,delta:delta,note:note});
-    toast('✅ Баланс: $'+r.new_balance.toFixed(2));
+    toast('✅ '+t('current_balance')+': $'+r.new_balance.toFixed(2));
     document.getElementById('adm-fb').textContent='$'+r.new_balance.toFixed(2);
     document.getElementById('adm-delta').value='';
     if(ADM_U.telegram_id===ME&&ME.telegram_id){ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);}
-  }catch(e){toast('Помилка: '+e.message);}
+  }catch(e){toast(t('error')+e.message);}
 }
 
 async function admSetSub(status){
   const chId=parseInt(document.getElementById('adm-ch-id').value);
   const days=parseInt(document.getElementById('adm-ch-days').value)||30;
-  if(!chId){toast('Введи ID каналу');return;}
+  if(!chId){toast(t('error')+'ID');return;}
   try{
     await api('POST','/api/admin/setsub',{channel_id:chId,status:status,days:days});
-    toast('✅ Статус оновлено: '+status);
-  }catch(e){toast('Помилка: '+e.message);}
+    toast('✅ '+status);
+  }catch(e){toast(t('error')+e.message);}
 }
 
 async function admBroadcast(){
   const text=document.getElementById('adm-bc-text').value.trim();
-  if(!text){toast('Введи текст');return;}
+  if(!text)return;
   const res=document.getElementById('adm-bc-result');
-  res.textContent='⏳ Надсилаю...';
+  res.textContent=t('sending');
   try{
     const r=await api('POST','/api/admin/broadcast',{text:text});
-    res.textContent='✅ Надіслано: '+r.sent+' / Помилок: '+r.errors;
+    res.textContent=t('sent_result',{sent:r.sent,errors:r.errors});
     document.getElementById('adm-bc-text').value='';
-  }catch(e){res.textContent='Помилка: '+e.message;}
+  }catch(e){res.textContent=t('error')+e.message;}
 }
 
 var TITLES={'s-ch':'Мої канали','s-fin':'Фінанси','s-boost':'Просування','s-ref':'Реферали','s-set':'Профіль'};
@@ -1400,23 +1818,23 @@ async function doAddChannel(){
   let username=inp.value.trim();
   username=username.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
   const errEl=document.getElementById('add-ch-err');
-  if(!username){errEl.textContent='Введите username канала';errEl.style.display='block';return;}
+  if(!username){errEl.textContent=t('enter_username');errEl.style.display='block';return;}
   const btn=document.getElementById('add-ch-btn');
-  btn.textContent='Добавляю...';btn.disabled=true;errEl.style.display='none';
+  btn.textContent=t('adding');btn.disabled=true;errEl.style.display='none';
   try{
     const r=await api('POST','/api/channel/add',{username:username});
     document.getElementById('add-ch-modal').classList.remove('on');
-    toast(r.trial?'🎉 Канал додано! '+r.trial_days+' днів безкоштовно':'✅ Канал @'+r.username+' додано');
+    toast(r.trial?t('trial_added',{days:r.trial_days}):t('channel_added',{username:r.username}));
     await loadChannels();
   }catch(e){
     let msg=e.message;
     try{const p=JSON.parse(msg);msg=p.message||msg;}catch{}
     errEl.textContent=msg;errEl.style.display='block';
   }
-  btn.textContent='Додати канал';btn.disabled=false;
+  btn.textContent=t('btn_add_channel');btn.disabled=false;
 }
 
-goTo('s-ch','Мої канали');setNav('nch');init();
+goTo('s-ch');setNav('nch');init();
 
 </script>
 </body>

@@ -133,9 +133,9 @@ def uts(lang: str, key: str, **kwargs) -> str:
 async def _ul(user_id: int) -> str:
     try:
         u = await get_user(user_id)
-        return (u.get("language") or "uk") if u else "uk"
+        return (u.get("language") or "ru") if u else "ru"
     except Exception:
-        return "uk"
+        return "ru"
 
 
 # ─── FSM States (мінімум — тільки для адміна) ────────────────────────────────
@@ -170,16 +170,24 @@ def admin_kb(lang: str = "uk") -> InlineKeyboardMarkup:
     ])
 
 
-def admin_channel_status_kb(ch_id: int) -> InlineKeyboardMarkup:
-    statuses = [
-        ("🟢 Активна підписка", "active"),
-        ("🟡 Пробний період",   "trial"),
-        ("🔴 Прострочена",      "restricted"),
-        ("⚫ Заблокований",     "blocked"),
-    ]
+def admin_channel_status_kb(ch_id: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    if lang == "uk":
+        statuses = [
+            ("🟢 Активна підписка", "active"),
+            ("🟡 Пробний період",   "trial"),
+            ("🔴 Прострочена",      "restricted"),
+            ("⚫ Заблокований",     "blocked"),
+        ]
+    else:
+        statuses = [
+            ("🟢 Активная подписка", "active"),
+            ("🟡 Пробный период",    "trial"),
+            ("🔴 Просроченная",      "restricted"),
+            ("⚫ Заблокирован",      "blocked"),
+        ]
     rows = [[InlineKeyboardButton(text=label, callback_data=f"adm_set_status:{ch_id}:{s}")]
             for label, s in statuses]
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="adm_ch_list")])
+    rows.append([InlineKeyboardButton(text=uts(lang, "adm_back"), callback_data="adm_ch_list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
