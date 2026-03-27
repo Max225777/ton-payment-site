@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>AutoPost</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+:root{
+  --bg:#0d0f14;--sur:#161921;--sur2:#1e2230;--bor:#252a3a;
+  --acc:#3d8ef0;--acc2:#5ba3ff;--grn:#2dd4a0;--red:#f05a5a;--yel:#f5c842;
+  --tx:#eaedf5;--mu:#6b738a;
+  --top:56px;--nav:64px;--sb:env(safe-area-inset-bottom,0px);
+  --st:env(safe-area-inset-top,0px);
+  --pad:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
+  height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── TOP BAR ── */
+.topbar{
+  position:fixed;top:0;left:0;right:0;
+  height:calc(var(--top) + var(--st));
+  padding-top:var(--st);
+  background:rgba(13,15,20,.95);
+  border-bottom:1px solid var(--bor);
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  padding-left:var(--pad);padding-right:var(--pad);
+  gap:8px;z-index:150;backdrop-filter:blur(16px);
+}
+.tb-left{display:flex;align-items:center;gap:8px}
+.tb-av{width:36px;height:36px;border-radius:50%;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--acc),#7c5af0);
+  font-size:16px;flex-shrink:0}
+.tb-av img{width:36px;height:36px;object-fit:cover;display:block}
+.tb-av img{width:100%;height:100%;object-fit:cover}
+.tb-id{font-size:11px;color:var(--mu);font-weight:600;white-space:nowrap}
+.tb-title{text-align:center;font-size:16px;font-weight:800;letter-spacing:-.3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-right{display:flex;justify-content:flex-end}
+.tb-bal{font-size:13px;font-weight:700;color:var(--grn);
+  background:rgba(45,212,160,.1);border:1px solid rgba(45,212,160,.2);
+  border-radius:20px;padding:5px 11px;white-space:nowrap}
+
+/* ── SCREENS ── */
+.scr{display:none;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  height:100dvh;
+  padding-top:calc(var(--top) + var(--st) + 16px);
+  padding-left:var(--pad);padding-right:var(--pad);
+  padding-bottom:calc(var(--nav)+40px+var(--sb))}
+.scr.on{display:block;animation:fu .2s ease}
+@keyframes fu{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+/* ── OVERLAYS ── */
+.ov{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding-top:calc(var(--top) + var(--st) + 16px);
+  padding-left:var(--pad);padding-right:var(--pad);
+  padding-bottom:calc(100px+var(--sb))}
+.ov.on{display:block;animation:su .25s cubic-bezier(.4,0,.2,1)}
+@keyframes su{from{opacity:0;transform:translateY(44px)}to{opacity:1;transform:none}}
+.ov-head{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.back{width:38px;height:38px;background:var(--sur);border:1px solid var(--bor);
+  border-radius:12px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:18px;flex-shrink:0;transition:.15s}
+.back:active{background:var(--sur2)}
+.ov-ttl{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── COMPONENTS ── */
+.badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px}
+.b-ok{background:rgba(45,212,160,.15);color:var(--grn)}
+.b-tr{background:rgba(61,142,240,.15);color:var(--acc2)}
+.b-ex{background:rgba(240,90,90,.12);color:var(--red)}
+.b-soon{background:rgba(107,115,138,.15);color:var(--mu)}
+
+.card{background:var(--sur);border:1px solid var(--bor);border-radius:18px;padding:18px;margin-bottom:12px}
+.stit{font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.9px;margin:20px 0 10px}
+
+.sr{display:flex;align-items:center;justify-content:space-between;
+  padding:13px 0;border-bottom:1px solid var(--bor);gap:12px}
+.sr:last-child{border-bottom:none}
+.sr.tap{cursor:pointer}
+.sr.tap:active{opacity:.7}
+.sr-l{flex:1;min-width:0}
+.sr-t{font-size:13px;font-weight:600}
+.sr-s{font-size:11px;color:var(--mu);margin-top:2px}
+.sr-v{font-size:13px;color:var(--acc2);font-weight:600;flex-shrink:0;
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;text-align:right}
+
+.tg{position:relative;width:42px;height:24px;flex-shrink:0}
+.tg input{opacity:0;width:0;height:0;position:absolute}
+.tg-t{position:absolute;inset:0;background:var(--sur2);border:1px solid var(--bor);
+  border-radius:12px;cursor:pointer;transition:.22s}
+.tg input:checked+.tg-t{background:var(--acc);border-color:var(--acc)}
+.tg-d{position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;
+  border-radius:50%;transition:.22s;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.tg input:checked~.tg-d{left:21px}
+
+.btn{display:flex;align-items:center;justify-content:center;gap:7px;
+  border:none;border-radius:14px;font-family:inherit;font-weight:700;cursor:pointer;transition:.18s}
+.btn:active{transform:scale(.96)}
+.bp{background:var(--acc);color:#fff;padding:14px 20px;font-size:14px;width:100%}
+.bg{background:var(--sur2);color:var(--tx);padding:11px 16px;font-size:12px;border:1px solid var(--bor)}
+.bd{background:rgba(240,90,90,.1);color:var(--red);padding:11px 16px;font-size:12px;border:1px solid rgba(240,90,90,.2)}
+.by{background:rgba(245,200,66,.1);color:var(--yel);padding:11px 16px;font-size:12px;border:1px solid rgba(245,200,66,.2)}
+.brow{display:flex;gap:8px;margin-top:12px}
+.brow .btn{flex:1}
+
+.inp{background:var(--sur2);border:1px solid var(--bor);border-radius:12px;
+  padding:12px 16px;font-family:inherit;font-size:13px;color:var(--tx);
+  width:100%;outline:none;transition:.2s}
+.inp:focus{border-color:var(--acc)}
+.inp::placeholder{color:var(--mu)}
+
+/* ── CHANNEL AVATAR ── */
+.ch-av{width:52px;height:52px;border-radius:50%;overflow:hidden;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:24px}
+.ch-av img{width:100%;height:100%;object-fit:cover}
+
+/* ── CHANNEL CARD ── */
+.ch-card{background:var(--sur);border:1px solid var(--bor);border-radius:18px;
+  margin-bottom:12px;overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.ch-card.open{border-color:rgba(61,142,240,.5);box-shadow:0 2px 20px rgba(61,142,240,.12)}
+.ch-card.expired{border:2px solid var(--red)!important;box-shadow:0 0 16px rgba(240,90,90,.18)!important}
+.ch-card.expired.open{border-color:var(--red)!important}
+.ch-top{padding:16px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;user-select:none}
+.ch-inf{flex:1;min-width:0}
+.ch-nm{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-mt{font-size:11px;color:var(--mu);margin-top:4px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.ch-cv{font-size:20px;color:var(--mu);transition:.25s;flex-shrink:0}
+.ch-card.open .ch-cv{transform:rotate(180deg)}
+.ch-body{display:none;border-top:1px solid var(--bor);padding:16px 18px}
+.ch-card.open .ch-body{display:block;animation:fu .18s ease}
+
+/* ── STATS ── */
+.srow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.sbox{background:var(--sur2);border-radius:12px;padding:12px 8px;text-align:center}
+.sv{font-size:20px;font-weight:800;line-height:1}
+.sl{font-size:10px;color:var(--mu);margin-top:4px;text-transform:uppercase;letter-spacing:.4px}
+
+.qbar{margin-bottom:14px}
+.qbl{display:flex;justify-content:space-between;font-size:11px;color:var(--mu);margin-bottom:6px}
+.btr{height:5px;background:var(--sur2);border-radius:5px;overflow:hidden}
+.bfi{height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:5px}
+
+/* ── ADD CHANNEL ── */
+.add-ch{border:1.5px dashed var(--bor);border-radius:18px;padding:20px 18px;
+  display:flex;align-items:center;gap:14px;cursor:pointer;transition:.2s;margin-top:4px}
+.add-ch:active{background:var(--sur);border-color:var(--acc)}
+
+/* ── BALANCE HERO ── */
+.bal-hero{background:linear-gradient(135deg,#1a2440,#0d1626);
+  border:1px solid rgba(61,142,240,.25);border-radius:22px;padding:24px;
+  margin-bottom:16px;position:relative;overflow:hidden}
+.bal-hero::before{content:'';position:absolute;top:-50px;right:-50px;
+  width:160px;height:160px;border-radius:50%;
+  background:radial-gradient(circle,rgba(61,142,240,.1),transparent)}
+
+/* ── PAY OPTION ── */
+.pay-row{display:flex;align-items:center;gap:14px;padding:14px 0;
+  border-bottom:1px solid var(--bor);cursor:pointer;transition:.15s}
+.pay-row:last-child{border-bottom:none}
+.pay-row:active{opacity:.7}
+.pay-ic{font-size:20px;width:42px;height:42px;background:var(--sur2);
+  border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pay-soon{font-size:9px;font-weight:700;background:var(--sur2);color:var(--mu);
+  padding:2px 7px;border-radius:6px;margin-left:auto;border:1px solid var(--bor)}
+
+/* ── HISTORY ── */
+.hi{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--bor)}
+.hi:last-child{border-bottom:none}
+.hd{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+
+/* ── PATTERN ── */
+.pat-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;min-height:28px}
+.pat-tag{background:var(--sur2);border:1px solid var(--bor);border-radius:20px;
+  padding:6px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px;
+  animation:fu .18s ease}
+.pat-auto{border-color:rgba(61,142,240,.4);color:var(--acc2)}
+.pat-rm{color:var(--mu);cursor:pointer;font-size:15px}
+.pat-rm:active{color:var(--red)}
+
+/* ── QUEUE ── */
+.q-post{background:var(--sur);border:1px solid var(--bor);border-radius:18px;
+  padding:18px;margin-bottom:14px;animation:sIn .35s cubic-bezier(.34,1.4,.64,1) both}
+.q-post.ok-out{animation:sR .3s ease forwards}
+.q-post.sk-out{animation:sL .3s ease forwards}
+@keyframes sIn{from{opacity:0;transform:translateX(-50px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes sR{to{opacity:0;transform:translateX(110px) scale(.94)}}
+@keyframes sL{to{opacity:0;transform:translateX(-110px) scale(.94)}}
+.q-media{font-size:11px;color:var(--mu);margin-bottom:10px}
+.q-text{font-size:13px;line-height:1.65;word-break:break-word}
+.q-text a{color:var(--acc2);font-weight:700;text-decoration:none}
+.q-actions{display:flex;gap:10px;margin-top:14px}
+.q-btn{flex:1;padding:13px;border-radius:13px;border:none;
+  font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:.18s}
+.q-btn:active{transform:scale(.94)}
+.q-ok{background:rgba(45,212,160,.15);color:var(--grn);border:1px solid rgba(45,212,160,.3)}
+.q-sk{background:rgba(240,90,90,.1);color:var(--red);border:1px solid rgba(240,90,90,.25)}
+
+/* ── REF ── */
+.ref-code{background:var(--sur2);border:1px solid var(--bor);border-radius:14px;
+  padding:16px;display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:14px;cursor:pointer}
+.ref-code:active{opacity:.8}
+.ref-stat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.rsbox{background:var(--sur);border:1px solid var(--bor);border-radius:14px;padding:16px;text-align:center}
+
+/* ── BOOST ── */
+.bg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bcard{background:var(--sur);border:1px solid var(--bor);border-radius:16px;
+  padding:18px;opacity:.42;position:relative}
+.bcard::after{content:'Скоро';position:absolute;top:10px;right:10px;
+  background:var(--sur2);color:var(--mu);font-size:9px;font-weight:700;
+  padding:3px 8px;border-radius:7px}
+
+/* ── SS4 ── */
+.ss4{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ss4box{background:var(--sur);border:1px solid var(--bor);border-radius:14px;padding:14px;text-align:center}
+.ss4v{font-size:22px;font-weight:800;color:var(--acc2)}
+.ss4l{font-size:10px;color:var(--mu);margin-top:3px;text-transform:uppercase;letter-spacing:.4px}
+
+/* ── PAYMENT MODAL ── */
+.modal-back{display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.6);
+  align-items:flex-end;justify-content:center}
+.modal-back.on{display:flex;animation:mIn .25s ease}
+@keyframes mIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--sur);border-radius:24px 24px 0 0;padding:28px 20px calc(24px + var(--sb));
+  width:100%;max-height:88vh;overflow-y:auto;animation:mUp .25s cubic-bezier(.4,0,.2,1)}
+@keyframes mUp{from{transform:translateY(60px)}to{transform:translateY(0)}}
+.modal-handle{width:36px;height:4px;background:var(--bor);border-radius:2px;margin:0 auto 18px}
+
+/* ── ADMIN ── */
+.adm-ur{display:flex;align-items:center;gap:12px;padding:12px 0;
+  border-bottom:1px solid var(--bor);cursor:pointer}
+.adm-ur:active{opacity:.7}
+.adm-ur:last-child{border-bottom:none}
+
+
+
+/* ── SKELETON ── */
+.sk{background:linear-gradient(90deg,var(--sur2) 25%,var(--bor) 50%,var(--sur2) 75%);
+  background-size:200% 100%;animation:shim 1.4s infinite;border-radius:10px}
+@keyframes shim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── NAV ── */
+.bnav{position:fixed;bottom:0;left:0;right:0;
+  height:calc(var(--nav)+var(--sb));
+  background:rgba(15,18,25,.97);border-top:1px solid var(--bor);
+  display:flex;align-items:flex-start;justify-content:space-around;
+  padding-top:9px;z-index:200;backdrop-filter:blur(20px)}
+.ni{display:flex;flex-direction:column;align-items:center;gap:4px;
+  cursor:pointer;padding:5px 10px;border-radius:12px;transition:.18s;min-width:56px}
+.ni.on .nic,.ni.on .nil{color:var(--acc2)}
+.ni.on{background:rgba(61,142,240,.08)}
+.nic{font-size:22px;color:var(--mu);line-height:1.1}
+.nil{font-size:10px;font-weight:600;color:var(--mu)}
+.nc{display:flex;flex-direction:column;align-items:center;gap:4px;
+  cursor:pointer;margin-top:-22px}
+.nc-btn{width:56px;height:56px;border-radius:50%;
+  background:linear-gradient(135deg,var(--acc),#5a6ff0);
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+  box-shadow:0 4px 22px rgba(61,142,240,.45);transition:.18s}
+.nc-btn:active{transform:scale(.9)}
+.nc.on .nil{color:var(--acc2)}
+.nc.on .nc-btn{box-shadow:0 4px 28px rgba(61,142,240,.7)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:calc(var(--nav)+22px+var(--sb));left:50%;
+  transform:translateX(-50%);background:rgba(28,32,44,.98);
+  border:1px solid var(--bor);border-radius:14px;padding:11px 20px;
+  font-size:13px;font-weight:600;z-index:600;animation:tIn .2s ease;
+  pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,.4);white-space:nowrap}
+@keyframes tIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%)translateY(0)}}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="tb-left">
+    <div class="tb-av" id="tb-av"><span>👤</span></div>
+    <div class="tb-id" id="tb-id">...</div>
+  </div>
+  <div class="tb-title" id="tb-title">Мої канали</div>
+  <div class="tb-right">
+    <div class="tb-bal" id="tb-bal">$0.00</div>
+  </div>
+</div>
+
+<!-- ══ CHANNELS ══ -->
+<div class="scr on" id="s-ch">
+  <div id="ch-list">
+    <div class="sk" style="height:90px;margin-bottom:12px;border-radius:18px"></div>
+    <div class="sk" style="height:90px;border-radius:18px"></div>
+  </div>
+  <div class="add-ch" onclick="openAddCh()">
+    <div style="width:46px;height:46px;border-radius:14px;background:var(--sur2);
+      display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">＋</div>
+    <div>
+      <div style="font-size:14px;font-weight:700">Додати канал</div>
+      <div style="font-size:12px;color:var(--mu);margin-top:2px">7 днів безкоштовно · потім $2/міс</div>
+    </div>
+  </div>
+
+  <!-- ADD CHANNEL MODAL -->
+  <div class="modal-back" id="add-ch-modal" onclick="closeAddCh(event)">
+    <div class="modal" onclick="e=>e.stopPropagation()">
+      <div class="modal-handle"></div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">Додати канал</div>
+      <div style="font-size:14px;color:var(--mu);margin-bottom:20px;line-height:1.7">
+        Спочатку додайте бота<br>
+        <a id="add-bot-link" href="https://t.me/SocialGiant_AutoPost_bot" style="color:var(--acc2);font-size:15px;font-weight:700;text-decoration:none" onclick="event.preventDefault();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(this.href);else window.open(this.href)">
+          <b id="add-bot-name">@SocialGiant_AutoPost_bot</b>
+        </a><br>
+        як <b style="color:var(--tx)">адміністратора</b> вашого каналу, потім вставте посилання або username.
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;color:var(--mu);margin-bottom:8px;font-weight:700">Username или ссылка на канал</div>
+        <input class="inp" id="add-ch-inp" placeholder="@channel или t.me/channel" style="font-size:17px;padding:15px 16px">
+        <div style="font-size:12px;color:var(--mu);margin-top:8px;line-height:1.5">
+          Можно вставить: <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">https://t.me/channel</span>
+        </div>
+      </div>
+      <div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:14px;padding:16px;margin-bottom:18px">
+        <div style="font-size:15px;font-weight:800;color:var(--grn);margin-bottom:6px">🎁 7 днів безкоштовно</div>
+        <div style="font-size:13px;color:var(--mu);line-height:1.5">Перший канал — пробний період 7 днів.<br>Після — лише <b style="color:var(--tx)">$2/міс</b>.</div>
+      </div>
+      <button class="btn bp" id="add-ch-btn" onclick="doAddChannel()">Додати канал</button>
+      <div id="add-ch-err" style="font-size:12px;color:var(--red);margin-top:10px;text-align:center;display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FINANCE ══ -->
+<div class="scr" id="s-fin">
+  <div class="bal-hero">
+    <div style="font-size:12px;color:var(--mu);margin-bottom:8px">Текущий баланс</div>
+    <div style="font-size:40px;font-weight:800;color:var(--grn);letter-spacing:-1px" id="fin-bal">$...</div>
+    <div style="font-size:12px;color:var(--mu);margin-top:6px" id="fin-sub">Загрузка...</div>
+  </div>
+  <div class="stit" style="margin-top:0">Активные слоты</div>
+  <div class="card" style="padding:4px 16px" id="fin-slots"><div class="sk" style="height:20px;margin:13px 0"></div></div>
+  <div class="stit">Пополнить баланс</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="pay-row" onclick="openPayModal('crypto')">
+      <div class="pay-ic">₿</div>
+      <div style="flex:1"><div style="font-size:14px;font-weight:600">Крипта (CryptoBot)</div><div style="font-size:11px;color:var(--mu)">USDT · быстро и анонимно</div></div>
+      <span style="color:var(--mu);font-size:22px">›</span>
+    </div>
+    <div class="pay-row" onclick="openPayModal('card')">
+      <div class="pay-ic">💳</div>
+      <div style="flex:1"><div style="font-size:14px;font-weight:600">Карта (UAH)</div><div style="font-size:11px;color:var(--mu)">Через менеджера</div></div>
+      <span style="color:var(--mu);font-size:22px">›</span>
+    </div>
+    <div class="pay-row" style="opacity:.5;cursor:default">
+      <div class="pay-ic">⭐️</div>
+      <div style="flex:1"><div style="font-size:14px;font-weight:600">Telegram Stars</div><div style="font-size:11px;color:var(--mu)">Оплата звёздочками</div></div>
+      <span class="pay-soon">Скоро</span>
+    </div>
+  </div>
+  <div class="stit">История операций</div>
+  <div class="card" style="padding:4px 16px" id="fin-hist"><div class="sk" style="height:20px;margin:13px 0"></div></div>
+</div>
+
+<!-- ══ BOOST ══ -->
+<div class="scr" id="s-boost">
+  <div class="card" style="text-align:center;padding:32px 24px;margin-bottom:16px;
+    background:linear-gradient(135deg,#1a2440,#0d1626);border-color:rgba(61,142,240,.2)">
+    <div style="font-size:48px;margin-bottom:12px">🚀</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:8px">Скоро</div>
+    <div style="font-size:13px;color:var(--mu);line-height:1.7">Функціонал просування в розробці.</div>
+  </div>
+  <div class="bg2">
+    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">📣</div><div style="font-size:13px;font-weight:700">Взаимопиар</div></div>
+    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">🎯</div><div style="font-size:13px;font-weight:700">Таргет</div></div>
+    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">📊</div><div style="font-size:13px;font-weight:700">Аналитика</div></div>
+    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">🤝</div><div style="font-size:13px;font-weight:700">Партнёрства</div></div>
+  </div>
+</div>
+
+<!-- ══ REFERRAL ══ -->
+<div class="scr" id="s-ref">
+  <div class="card" style="text-align:center;padding:28px 24px;margin-bottom:16px;
+    background:linear-gradient(135deg,#1a2040,#0d1220);border-color:rgba(91,163,255,.2)">
+    <div style="font-size:48px;margin-bottom:12px">🎁</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:8px">Запрошуй — заробляй</div>
+    <div style="font-size:13px;color:var(--mu);line-height:1.7">За кожного друга ти отримуєш<br><b style="color:var(--grn);font-size:22px">50%</b> від усіх його платежів<br>протягом <b style="color:var(--acc2)">3 місяців</b> з моменту реєстрації.</div>
+    <div style="font-size:11px;color:var(--mu);margin-top:12px;line-height:1.6;background:rgba(255,255,255,.04);border-radius:10px;padding:10px">
+      💡 Запросив друга → він оплатив підписку → ти отримуєш <b style="color:var(--grn)">50%</b> від суми. Діє 90 днів з дня реєстрації друга.
+    </div>
+  </div>
+  <div style="display:none" id="ref-code-tx"></div>
+  <button class="btn bp" style="margin-bottom:18px;font-size:15px;padding:16px" onclick="shareRef()">📤 Поділитися реферальним посиланням</button>
+  <div class="ref-stat">
+    <div class="rsbox"><div style="font-size:26px;font-weight:800;color:var(--grn)" id="ref-tot">—</div><div style="font-size:11px;color:var(--mu);margin-top:4px">Запрошено</div></div>
+    <div class="rsbox"><div style="font-size:26px;font-weight:800;color:var(--yel)" id="ref-earn">—</div><div style="font-size:11px;color:var(--mu);margin-top:4px">Зароблено</div></div>
+  </div>
+  <div class="stit">Мої реферали</div>
+  <div class="card" style="padding:4px 16px" id="ref-list"><div class="sk" style="height:20px;margin:13px 0"></div></div>
+</div>
+
+<!-- ══ SETTINGS ══ -->
+<div class="scr" id="s-set">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">
+    <div id="me-av" style="width:60px;height:60px;border-radius:50%;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;
+      background:linear-gradient(135deg,var(--acc),#7c5af0)"><span>👤</span></div>
+    <div><div style="font-size:18px;font-weight:800" id="me-name">...</div>
+    <div style="font-size:12px;color:var(--mu);margin-top:3px" id="me-meta">...</div></div>
+  </div>
+  <div class="stit" style="margin-top:0">Мої показники</div>
+  <div class="ss4" style="margin-bottom:18px">
+    <div class="ss4box"><div class="ss4v" id="st-pub">—</div><div class="ss4l">Опубликовано</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-ch">—</div><div class="ss4l">Каналів</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-ref">—</div><div class="ss4l">Рефералов</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-days" style="color:var(--grn)">—</div><div class="ss4l">Дней</div></div>
+  </div>
+  <div class="stit">Настройки</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="sr tap"><div class="sr-l"><div class="sr-t">Язык интерфейса</div></div><span class="sr-v">🇷🇺 RU →</span></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t">Уведомления</div></div><label class="tg"><input type="checkbox" checked><div class="tg-t"></div><div class="tg-d"></div></label></div>
+  </div>
+  <div class="stit">Статистика сервісу</div>
+  <div class="ss4">
+    <div class="ss4box"><div class="ss4v" id="srv-u">—</div><div class="ss4l">Користувачів</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-c">—</div><div class="ss4l">Каналів</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-p">—</div><div class="ss4l">Постов</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-d">—</div><div class="ss4l">Дней работы</div></div>
+  </div>
+  <div id="adm-wrap" style="display:none;margin-top:18px">
+    <button class="btn by" style="width:100%;padding:13px" onclick="openOv('ov-adm');loadAdminData()">👑 Панель администратора</button>
+  </div>
+</div>
+
+<!-- ═══════════════ OVERLAYS ═══════════════ -->
+
+<!-- CH SETTINGS -->
+<div class="ov" id="ov-chs">
+  <div class="ov-head">
+    <div class="back" onclick="closeOv('ov-chs')">←</div>
+    <div id="ov-chs-av" class="ch-av" style="width:38px;height:38px;font-size:18px;border-radius:50%"></div>
+    <div class="ov-ttl" id="ov-chs-t">Настройки</div>
+  </div>
+  <div class="stit" style="margin-top:0">Автопостинг</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="sr"><div class="sr-l"><div class="sr-t">Автопостинг</div><div class="sr-s">Увімкнути публікацію</div></div><label class="tg"><input type="checkbox" id="s-ap" onchange="onTgl('autopost_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t">AI переробка</div><div class="sr-s">Перефразування текстів</div></div><label class="tg"><input type="checkbox" id="s-ai" onchange="onTgl('_ai',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t">Тільки з медіа</div><div class="sr-s">Збирати пости лише з фото/відео</div></div><label class="tg"><input type="checkbox" id="s-mo" onchange="onTgl('media_only',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="prmpt('autopost_from','Початок (09:00)','sf')"><div class="sr-l"><div class="sr-t">Початок</div></div><span class="sr-v" id="sf">—</span></div>
+    <div class="sr tap" onclick="prmpt('autopost_to','Кінець (22:00)','st')"><div class="sr-l"><div class="sr-t">Кінець</div></div><span class="sr-v" id="st">—</span></div>
+    <div class="sr tap" onclick="prmpt('autopost_ppd','Постів на день (1–24)','sp')"><div class="sr-l"><div class="sr-t">Постів на день</div></div><span class="sr-v" id="sp">—</span></div>
+    <div class="sr tap" onclick="prmpt('channel_lang','Мова (off/ru/uk/en)','sl')"><div class="sr-l"><div class="sr-t">Мова постів</div></div><span class="sr-v" id="sl">—</span></div>
+  </div>
+  <div class="stit">Підписка</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="sr">
+      <div class="sr-l">
+        <div class="sr-t">🔄 Автопродовження підписки</div>
+        <div class="sr-s" style="font-size:10px;color:var(--mu);line-height:1.4;margin-top:3px">За 1 год до закінчення автоматично списує $<span id="s-price">2</span> з балансу і продовжує підписку на 30 днів. Якщо коштів немає — надійде сповіщення.</div>
+      </div>
+      <label class="tg"><input type="checkbox" id="s-ar" onchange="onTgl('autorenew_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label>
+    </div>
+  </div>
+  <div class="stit">Посилання в кінці поста</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="sr"><div class="sr-l"><div class="sr-t">Увімкнути</div></div><label class="tg"><input type="checkbox" id="s-pb" onchange="onTgl('postbtn_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="prmpt('postbtn_label','Текст ссылки','spbl')"><div class="sr-l"><div class="sr-t">Текст</div></div><span class="sr-v" id="spbl">—</span></div>
+    <div class="sr tap" onclick="prmpt('postbtn_url','URL (https://...)','spbu')"><div class="sr-l"><div class="sr-t">URL</div></div><span class="sr-v" id="spbu">—</span></div>
+  </div>
+  <div style="height:18px"></div>
+  <button class="btn bp" id="save-btn" onclick="saveSettings()">Сохранить</button>
+</div>
+
+<!-- QUEUE -->
+<div class="ov" id="ov-q">
+  <div class="ov-head">
+    <div class="back" onclick="closeOv('ov-q')">←</div>
+    <div class="ov-ttl">Очередь постов</div>
+    <div style="margin-left:auto;background:var(--sur2);border:1px solid var(--bor);
+      border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;color:var(--acc2)" id="q-chip">...</div>
+  </div>
+  <div id="q-wrap"></div>
+</div>
+
+<!-- SOURCES -->
+<div class="ov" id="ov-src">
+  <div class="ov-head">
+    <div class="back" onclick="closeOv('ov-src')">←</div>
+    <div class="ov-ttl">Джерела</div>
+  </div>
+  <div id="src-list"><div class="sk" style="height:70px;border-radius:16px"></div></div>
+  <div class="stit">Додати джерело</div>
+  <div style="display:flex;gap:10px">
+    <input class="inp" id="src-inp" placeholder="@username або t.me/channel" style="flex:1">
+    <button class="btn bg" onclick="addSrc()" style="flex-shrink:0">+ Додати</button>
+  </div>
+</div>
+
+<!-- PATTERNS -->
+<div class="ov" id="ov-pat">
+  <div class="ov-head">
+    <div class="back" onclick="closeOv('ov-pat')">←</div>
+    <div class="ov-ttl" id="ov-pat-t">Паттерны</div>
+  </div>
+  <div class="card" style="padding:16px">
+    <div style="font-size:12px;color:var(--mu);line-height:1.6;margin-bottom:14px">
+      Бот автоматически находит повторяющийся текст в конце постов и вырезает его. Можно добавить вручную.
+    </div>
+    <div class="stit" style="margin-top:0">Авто-паттерны</div>
+    <div class="pat-list" id="auto-pats"></div>
+    <div class="stit">Ручные паттерны</div>
+    <div class="pat-list" id="man-pats"></div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <input class="inp" id="pat-inp" placeholder="Текст для видалення..." style="flex:1">
+      <button class="btn bg" onclick="addPat()" style="flex-shrink:0;padding:11px 14px">+</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div class="ov" id="ov-adm">
+  <div class="ov-head">
+    <div class="back" onclick="closeOv('ov-adm')">←</div>
+    <div class="ov-ttl">👑 Адміністратор</div>
+  </div>
+  <div class="stit" style="margin-top:0">Загальна статистика</div>
+  <div class="ss4" style="margin-bottom:18px">
+    <div class="ss4box"><div class="ss4v" id="adm-u">—</div><div class="ss4l">Користувачів</div></div>
+    <div class="ss4box"><div class="ss4v" id="adm-c">—</div><div class="ss4l">Каналів</div></div>
+    <div class="ss4box"><div class="ss4v" id="adm-p">—</div><div class="ss4l">Постів</div></div>
+    <div class="ss4box"><div class="ss4v" id="adm-r">—</div><div class="ss4l">Виручка</div></div>
+  </div>
+  <div class="stit">Управління балансом</div>
+  <div class="card" style="padding:16px">
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <input class="inp" id="adm-tid" placeholder="Telegram ID" type="number" style="flex:1">
+      <button class="btn bg" onclick="admFind()" style="flex-shrink:0">Знайти</button>
+    </div>
+    <div id="adm-found" style="display:none">
+      <div style="background:var(--sur2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#7c5af0);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👤</div>
+          <div style="flex:1"><div style="font-size:14px;font-weight:700" id="adm-fn">...</div><div style="font-size:11px;color:var(--mu)" id="adm-fi">...</div></div>
+          <div style="text-align:right"><div style="font-size:18px;font-weight:800;color:var(--grn)" id="adm-fb">$0</div><div style="font-size:10px;color:var(--mu)">баланс</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input class="inp" id="adm-delta" placeholder="Сума (+ або -)" type="number" step="0.01" style="flex:1">
+        <input class="inp" id="adm-note" placeholder="Примітка" style="flex:1">
+      </div>
+      <button class="btn bp" onclick="admBal()">Змінити баланс</button>
+    </div>
+  </div>
+  <div class="stit">Керування підпискою каналу</div>
+  <div class="card" style="padding:16px">
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <input class="inp" id="adm-ch-id" placeholder="ID каналу" type="number" style="flex:1">
+      <input class="inp" id="adm-ch-days" placeholder="Днів" type="number" value="30" style="width:80px;flex:none">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bg" style="flex:1" onclick="admSetSub('active')">✅ Активна</button>
+      <button class="btn by" style="flex:1" onclick="admSetSub('trial')">🧪 Тріал</button>
+      <button class="btn bd" style="flex:1" onclick="admSetSub('restricted')">🔴 Блок</button>
+    </div>
+  </div>
+  <div class="stit">Розсилка</div>
+  <div class="card" style="padding:16px">
+    <textarea class="inp" id="adm-bc-text" placeholder="Текст розсилки (HTML підтримується)" style="min-height:80px;resize:vertical;width:100%;margin-bottom:10px"></textarea>
+    <button class="btn bp" onclick="admBroadcast()">📢 Надіслати всім</button>
+    <div id="adm-bc-result" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
+  </div>
+  <div class="stit">Останні користувачі</div>
+  <div class="card" style="padding:4px 16px" id="adm-users"><div class="sk" style="height:20px;margin:13px 0"></div></div>
+</div>
+
+<!-- ═══ PAYMENT MODAL ═══ -->
+<div class="modal-back" id="pay-modal" onclick="closePayModal(event)">
+  <div class="modal" onclick="e=>e.stopPropagation()">
+    <div class="modal-handle"></div>
+    <!-- Insufficient funds banner (shown when redirected from channel) -->
+    <div id="pay-insuf-banner" style="display:none;background:rgba(240,90,90,.1);border:1px solid rgba(240,90,90,.35);border-radius:14px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:4px">⚠️ Недостатньо коштів</div>
+      <div style="font-size:12px;color:var(--mu);line-height:1.5">Поповніть баланс, щоб оплатити підписку на канал з балансу. Після поповнення натисніть «Оплатити підписку» на каналі.</div>
+    </div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:16px" id="pay-modal-title">Поповнення балансу</div>
+    <!-- CRYPTO -->
+    <div id="pay-crypto-block">
+      <div class="card" style="background:var(--sur2);padding:16px;margin-bottom:14px">
+        <div style="font-size:13px;color:var(--mu);line-height:1.6;margin-bottom:12px">
+          Оплата через <b style="color:var(--tx)">@CryptoBot</b>. Безпечно, швидко, без комісій.
+        </div>
+        <div style="margin-bottom:16px">
+            <div style="font-size:13px;color:var(--mu);margin-bottom:10px;font-weight:600">Сума поповнення (USDT)</div>
+            <input class="inp" id="pay-amount" type="number" step="1" min="1" value="2" placeholder="Введіть суму" style="font-size:28px;font-weight:800;padding:18px 20px;text-align:center;letter-spacing:1px">
+            <div style="font-size:11px;color:var(--mu);margin-top:8px;text-align:center">Мінімум $1 · Зарахування миттєво</div>
+          </div>
+        </div>
+        <button class="btn bp" id="pay-crypto-btn" onclick="doCryptoPay()">₿ Створити рахунок</button>
+      </div>
+      <div id="pay-invoice-block" style="display:none">
+        <div class="card" style="background:rgba(45,212,160,.06);border-color:rgba(45,212,160,.3);padding:16px;text-align:center">
+          <div style="font-size:14px;font-weight:700;margin-bottom:8px">Рахунок створено! ✅</div>
+          <div style="font-size:12px;color:var(--mu);margin-bottom:14px">Оплатіть через CryptoBot та поверніться сюди.</div>
+          <button class="btn bp" id="pay-link-btn" onclick="openPayLink()">Відкрити CryptoBot →</button>
+          <button class="btn bg" style="width:100%;margin-top:8px" onclick="checkInvoice()">Перевірити оплату</button>
+        </div>
+      </div>
+    </div>
+    <!-- CARD -->
+    <div id="pay-card-block" style="display:none">
+      <div class="card" style="background:var(--sur2);padding:16px">
+        <div style="font-size:13px;line-height:1.7;margin-bottom:14px">
+          Для поповнення карткою напишіть менеджеру:<br>
+          <b id="pay-manager-link" style="color:var(--acc2)">@manager</b><br><br>
+          Вкажіть суму поповнення та спосіб оплати (Monobank, PrivatBank тощо). Зарахування протягом кількох хвилин.
+        </div>
+        <button class="btn bp" onclick="openManager()">💬 Написати менеджеру</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- BOTTOM NAV -->
+<nav class="bnav">
+  <div class="ni" id="nfin" onclick="goTo('s-fin','Фінанси');setNav('nfin')">
+    <span class="nic">💳</span><span class="nil">Фінанси</span>
+  </div>
+  <div class="ni" id="nref" onclick="goTo('s-ref','Реферали');setNav('nref')">
+    <span class="nic">👥</span><span class="nil">Реферали</span>
+  </div>
+  <div class="nc on" id="nch" onclick="goTo('s-ch','Мої канали');setNav('nch')">
+    <div class="nc-btn">☰</div><span class="nil">Канали</span>
+  </div>
+  <div class="ni" id="nbst" onclick="goTo('s-boost','Просування');setNav('nbst')">
+    <span class="nic">🚀</span><span class="nil">Просування</span>
+  </div>
+  <div class="ni" id="nset" onclick="goTo('s-set','Профіль');setNav('nset')">
+    <span class="nic">⚙️</span><span class="nil">Профіль</span>
+  </div>
+</nav>
+
+<script>
+const TG = window.Telegram?.WebApp;
+if (TG) { TG.ready(); TG.expand(); }
+
+const INIT = TG?.initData || '';
+let ME=null, CHANNELS=[], CFG={}, CUR_CH=null, CUR_SRC=null, CUR_S={}, Q_DATA=[], Q_POSTBTN={}, ADM_U=null, CUR_INVOICE=null;
+
+// ── API ─────────────────────────────────────────────────────────────────────
+async function api(m,p,b){
+  const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json','X-Init-Data':INIT},body:b?JSON.stringify(b):undefined});
+  if(!r.ok){const t=await r.text();throw new Error(t)}
+  return r.json();
+}
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+async function init(){
+  try{
+    // Show TG user info immediately from initData (no API wait)
+    const u=TG?.initDataUnsafe?.user;
+    if(u){
+      document.getElementById('tb-id').textContent='ID '+(u.id||'');
+      if(u.photo_url){
+        document.getElementById('tb-av').innerHTML=`<img src="${u.photo_url}" onerror="this.parentNode.innerHTML='<span>👤</span>'">`;
+        document.getElementById('me-av').innerHTML=`<img src="${u.photo_url}" style="width:100%;height:100%;object-fit:cover">`;
+      }
+      if(u.first_name) document.getElementById('me-name').textContent=(u.username?'@'+u.username:u.first_name);
+    }
+
+    [ME, CFG] = await Promise.all([api('GET','/api/me'), api('GET','/api/pay/config')]);
+    if(u?.photo_url){
+      document.getElementById('tb-av').innerHTML=`<img src="${u.photo_url}" onerror="this.parentNode.innerHTML='<span>👤</span>'">`;
+      document.getElementById('me-av').innerHTML=`<img src="${u.photo_url}" style="width:100%;height:100%;object-fit:cover">`;
+    }
+    document.getElementById('tb-id').textContent='ID '+ME.telegram_id;
+    document.getElementById('tb-bal').textContent='$'+ME.balance.toFixed(2);
+    if(ME.is_admin) document.getElementById('adm-wrap').style.display='block';
+    await loadChannels();
+    // Fill pay channel select
+    fillPaySelect();
+  }catch(e){toast('Помилка завантаження: '+e.message)}
+}
+
+// ── CHANNELS ────────────────────────────────────────────────────────────────
+async function loadChannels(){
+  try{
+    CHANNELS=await api('GET','/api/channels');
+    renderChannels();
+    fillPaySelect();
+  }catch(e){
+    console.error('channels error:',e);
+    document.getElementById('ch-list').innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">Помилка завантаження: '+e.message+'</div>';
+  }
+}
+
+function chGrad(id){
+  return ['135deg,#3d8ef0,#7c5af0','135deg,#2dd4a0,#1a8a6b','135deg,#f5c842,#e67e22','135deg,#f05a5a,#c0392b','135deg,#5ba3ff,#3d5a99'][id%5];
+}
+const CH_ICONS=['📡','🗞','📺','📢','💬','🔔'];
+
+function renderChannels(){
+  const el=document.getElementById('ch-list');
+  if(!CHANNELS.length){
+    el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--mu);font-size:14px">🚀 Нет каналов. Добавьте первый!</div>';
+    return;
+  }
+  el.innerHTML=CHANNELS.map(ch=>{
+    const s=ch.settings||{},q=ch.queue_count||0,qp=Math.min(100,Math.round(q/5*100));
+    const qmax=5;
+    const d=ch.subscription_days||0;
+    const isTrial=ch.subscription_status==='trial';
+    const isActive=ch.subscription_status==='active';
+    const isExpired=!isTrial&&!isActive; // restricted / pending / etc
+    const st=isTrial?'🧪 Пробний':isActive?'✅ Активний':'❌ Закінчилась';
+    const badgeHtml=isTrial
+      ?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.35)">'+st+'</span>'
+      :isActive
+      ?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(45,212,160,.15);color:#2dd4a0;border:1px solid rgba(45,212,160,.3)">'+st+'</span>'
+      :'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(240,90,90,.22);color:#f05a5a;border:1.5px solid rgba(240,90,90,.5)">'+st+'</span>';
+
+    // Body: if expired — show only pay button + note; else show full controls
+    const expiredBody = isExpired ? `
+      <div class="ch-body">
+        <div style="background:rgba(240,90,90,.07);border:1px solid rgba(240,90,90,.2);border-radius:14px;padding:18px;text-align:center;margin-bottom:14px">
+          <div style="font-size:28px;margin-bottom:8px">🔒</div>
+          <div style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:6px">Підписка закінчилась</div>
+          <div style="font-size:12px;color:var(--mu);line-height:1.5;margin-bottom:14px">Всі налаштування збережені.<br>Автопостинг зупинено до поповнення.</div>
+          <button class="btn bp" style="width:100%;font-size:14px;padding:14px" onclick="event.stopPropagation();buySlot(${ch.id})">💳 Оплатити підписку — $${CFG.price_per_slot||2}/міс</button>
+        </div>
+        <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">🗑 Видалити канал</button>
+      </div>` : `
+      <div class="ch-body">
+        <div class="srow">
+          <div class="sbox"><div class="sv" style="color:var(--grn)">${q}</div><div class="sl">Черга</div></div>
+          <div class="sbox"><div class="sv">${s.autopost_ppd||1}/д</div><div class="sl">Постів</div></div>
+          <div class="sbox"><div class="sv" style="color:var(--acc2)">${ch.total_published||0}</div><div class="sl">Всього</div></div>
+        </div>
+        <div class="qbar">
+          <div class="qbl"><span>Черга</span><span>${q}/5</span></div>
+          <div class="btr"><div class="bfi" style="width:${qp}%"></div></div>
+        </div>
+        <div class="card" style="padding:4px 16px;margin-bottom:12px">
+          <div class="sr tap" onclick="openCHS(${ch.id})">
+            <div class="sr-l"><div class="sr-t">⚙️ Налаштування</div><div class="sr-s">${s.autopost_from||'09:00'}–${s.autopost_to||'22:00'} · ${s.autopost_ppd||1}/д · ${s.channel_lang||'off'}</div></div>
+            <span class="sr-v">→</span>
+          </div>
+          <div class="sr tap" onclick="openSrc(${ch.id})">
+            <div class="sr-l"><div class="sr-t">🔗 Джерела і паттерни</div></div>
+            <span class="sr-v">→</span>
+          </div>
+          <div class="sr tap" onclick="openQueue(${ch.id})">
+            <div class="sr-l"><div class="sr-t">📋 Черга постів</div><div class="sr-s">${q} очікують</div></div>
+            <span class="sr-v">${q} →</span>
+          </div>
+          <div class="sr">
+            <div class="sr-l">
+              <div class="sr-t">📅 Підписка</div>
+              <div class="sr-s">${st}${ch.subscription_total_hours>0?' · '+d+'д '+ch.subscription_hours+'г':''}</div>
+            </div>
+            ${!isActive?`<button class="btn bp" style="padding:8px 14px;font-size:11px;width:auto" onclick="event.stopPropagation();buySlot(${ch.id})">Купити $${CFG.price_per_slot||2}</button>`:`<span class="sr-v" style="color:var(--grn)">✓ Активна</span>`}
+          </div>
+          <div class="sr">
+            <div class="sr-l">
+              <div class="sr-t">🔄 Автопродовження підписки</div>
+              <div class="sr-s" style="font-size:10px;color:var(--mu);line-height:1.4;margin-top:3px">За 1 год до закінчення автоматично<br>списує $${CFG.price_per_slot||2} з балансу і продовжує на 30 днів</div>
+            </div>
+            <label class="tg" onclick="event.stopPropagation()">
+              <input type="checkbox" ${s.autorenew_enabled?'checked':''} onchange="toggleAutorenew(${ch.id},this)">
+              <div class="tg-t"></div><div class="tg-d"></div>
+            </label>
+          </div>
+        </div>
+        <div class="brow" style="margin-bottom:10px">
+          <button class="btn bg" style="flex:1" onclick="parseNow(${ch.id},this)">🔄 Парсити пости</button>
+        </div>
+        <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">🗑 Видалити канал</button>
+      </div>`;
+
+    return `
+    <div class="ch-card${isExpired?' expired':''}" id="cc${ch.id}">
+      <div class="ch-top" onclick="toggleCh(${ch.id})">
+        <div class="ch-av" id="chav${ch.id}" style="background:linear-gradient(${chGrad(ch.id)});border-radius:50%${isExpired?';filter:grayscale(.5)':''}">
+          ${CH_ICONS[ch.id%6]}
+        </div>
+        <div class="ch-inf">
+          <div class="ch-nm">${ch.title||('@'+ch.username)}</div>
+          <div style="font-size:11px;color:var(--mu);margin-top:1px;margin-bottom:4px">@${ch.username||''}</div>
+          <div class="ch-mt">
+            ${badgeHtml}
+            ${!isExpired&&s.autopost_enabled?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(45,212,160,.15);color:#2dd4a0;border:1px solid rgba(45,212,160,.3)">🟢 Автопост</span>':''}
+            ${!isExpired&&ch.subscription_total_hours>0?'<span>'+d+'д '+ch.subscription_hours+'г</span>':''}
+            ${isExpired?'<span style="font-size:10px;color:var(--red)">⚠️ Потрібна оплата</span>':''}
+          </div>
+        </div>
+        <span class="ch-cv">⌄</span>
+      </div>
+      ${expiredBody}
+    </div>`;
+  }).join('');
+  // Load real channel photos
+  CHANNELS.forEach(ch=>loadChPhoto(ch.id));
+}
+
+async function loadChPhoto(chId){
+  if(!INIT) return;
+  try{
+    const r=await fetch('/api/channel/'+chId+'/photo',{headers:{'X-Init-Data':INIT,'X-Dev-Id':''}}); 
+    if(r.ok && r.headers.get('content-type')?.includes('image')){
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const el=document.getElementById('chav'+chId);
+      if(el) el.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    }
+  }catch(e){}
+}
+
+function toggleCh(id){document.getElementById('cc'+id)?.classList.toggle('open')}
+async function parseNow(chId, btn){
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Запускаю...'; btn.disabled = true;
+  try {
+    await api('POST', '/api/channel/'+chId+'/parse', {});
+    toast('🔄 Парсинг запущен! Посты появятся через ~1 мин');
+    btn.textContent = '✅ Запущено';
+    setTimeout(()=>{ btn.textContent=orig; btn.disabled=false; }, 5000);
+  } catch(e) {
+    toast('Помилка: '+e.message);
+    btn.textContent = orig; btn.disabled = false;
+  }
+}
+async function delCh(id,name){
+  if(!confirm('Видалити '+name+'?')) return;
+  try{await api('DELETE','/api/channel/'+id);toast('Видалено');await loadChannels()}
+  catch(e){toast('Помилка: '+e.message)}
+}
+
+// ── CH SETTINGS ──────────────────────────────────────────────────────────────
+function openCHS(id){
+  CUR_CH=id;
+  const ch=CHANNELS.find(c=>c.id===id),s=ch?.settings||{};
+  document.getElementById('ov-chs-t').textContent='@'+(ch?.username||ch?.title||id);
+  const av=document.getElementById('ov-chs-av');
+  av.style.background=`linear-gradient(${chGrad(id)})`;
+  av.textContent=CH_ICONS[id%6];
+  document.getElementById('s-ap').checked=!!s.autopost_enabled;
+  document.getElementById('s-ai').checked=s.ai_mode!=='off';
+  document.getElementById('s-mo').checked=!!s.media_only;
+  document.getElementById('s-pb').checked=!!s.postbtn_enabled;
+  document.getElementById('s-ar').checked=!!s.autorenew_enabled;
+  const priceEl=document.getElementById('s-price');
+  if(priceEl) priceEl.textContent=(CFG.price_per_slot||2).toFixed(0);
+  ['sf','st','sp','sl','spbl','spbu'].forEach((el,i)=>{
+    const keys=['autopost_from','autopost_to','autopost_ppd','channel_lang','postbtn_label','postbtn_url'];
+    document.getElementById(el).textContent=s[keys[i]]||'—';
+  });
+  CUR_S={...s};
+  openOv('ov-chs');
+}
+function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR_S[k]=cb.checked}
+function prmpt(k,lbl,el){const v=prompt(lbl,CUR_S[k]||'');if(v===null)return;CUR_S[k]=v;document.getElementById(el).textContent=v||'—'}
+async function saveSettings(){
+  if(!CUR_CH)return;
+  const btn=document.getElementById('save-btn');btn.textContent='Сохраняю...';btn.disabled=true;
+  try{await api('POST','/api/channel/'+CUR_CH+'/settings',CUR_S);toast('✅ Сохранено');closeOv('ov-chs');await loadChannels()}
+  catch(e){toast('Помилка: '+e.message)}
+  btn.textContent='Сохранить';btn.disabled=false;
+}
+
+// ── QUEUE ────────────────────────────────────────────────────────────────────
+async function openQueue(id){
+  CUR_CH=id;openOv('ov-q');
+  document.getElementById('q-wrap').innerHTML='<div class="sk" style="height:150px;border-radius:18px"></div>';
+  try{
+    const _qr=await api('GET','/api/channel/'+id+'/queue');
+    Q_DATA=Array.isArray(_qr)?_qr:(_qr.posts||[]);
+    Q_POSTBTN=(!Array.isArray(_qr)&&_qr.postbtn)||{};
+    renderQ()
+  }
+  catch(e){toast('Помилка черги')}
+}
+function renderQ(){
+  const wrap=document.getElementById('q-wrap');
+  document.getElementById('q-chip').textContent=Q_DATA.length+'/5 постов';
+  if(!Q_DATA.length){wrap.innerHTML='<div style="text-align:center;padding:50px 20px;color:var(--mu);font-size:15px">🎉 Очередь пуста</div>';return}
+  wrap.innerHTML='';
+  Q_DATA.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='q-post';d.style.animationDelay=(i*.07)+'s';d.dataset.id=p.id;
+    const miLabel={photo:'📸 Фото',video:'🎬 Видео',album:'📷 Альбом',animation:'🎞 GIF'}[p.media_type]||'📄 Текст';
+    var albumHtml='';
+    if(p.media_type==='album'&&p.media_files_json){
+      try{
+        var _af3=JSON.parse(p.media_files_json);
+        var _gr3='';
+        for(var _fi3=0;_fi3<Math.min(_af3.length,4);_fi3++){
+          var _f3=_af3[_fi3];
+          var _isv3=(_f3.type==='video'||_f3.type==='animation');
+          var _tsrc3=_f3.thumb_fid?('/api/media/'+encodeURIComponent(_f3.thumb_fid)+'/thumb'):(_isv3?null:('/api/media/'+encodeURIComponent(_f3.file_id||'')+'/thumb'));
+          var _streamSrc3=_isv3?('/api/media/'+encodeURIComponent(_f3.file_id||'')+'/stream'):'';
+          var _origUrl3=p.original_url||'';
+          _gr3+='<div onclick="openTgUrl(\''+_origUrl3+'\')" style="position:relative;border-radius:8px;overflow:hidden;cursor:pointer;background:#111;height:90px">';
+          if(_tsrc3){
+            _gr3+='<img src="'+_tsrc3+'" style="width:100%;height:90px;object-fit:cover;display:block">';
+          }else if(_isv3&&_streamSrc3){
+            _gr3+='<video src="'+_streamSrc3+'" muted preload="metadata" playsinline style="width:100%;height:90px;object-fit:cover;display:block;opacity:0;transition:opacity .3s" onloadeddata="this.currentTime=0.5" onseeked="this.style.opacity=1" onerror="this.style.opacity=1;this.style.display=\'none\'"></video>'
+              +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e)"><span style="font-size:22px">🎬</span></div>';
+          }else{
+            _gr3+='<div style="width:100%;height:90px;background:linear-gradient(135deg,#1a1a2e,#16213e)"></div>';
+          }
+          if(_isv3)_gr3+='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.28)"><div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:12px">&#9654;</div></div>';
+          _gr3+='</div>';
+        }
+        if(_gr3)albumHtml='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px;border-radius:12px;overflow:hidden">'+_gr3+'</div>';
+      }catch(e2){}
+    }
+    var _isVid2=p.media_type==='video'||p.media_type==='animation';
+    var thumbHtml=albumHtml||'';
+    // Open video/post in Telegram via original_url
+    if(!albumHtml){
+      if(p.thumb_url){
+        var _playBadge=_isVid2?'<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);border-radius:20px;padding:3px 8px;font-size:12px;color:#fff">▶ Відео</div>':'';
+        thumbHtml='<div data-url="'+(p.original_url||'')+'" style="margin-bottom:10px;border-radius:12px;overflow:hidden;position:relative'+(_isVid2?';cursor:pointer':'')+'"'
+          +(_isVid2?' onclick="openTgUrl(this.dataset.url)"':'')+'>'
+          +'<img src="'+p.thumb_url+'" style="width:100%;max-height:240px;object-fit:cover;display:block">'
+          +_playBadge+'</div>';
+      }else if(_isVid2){
+        var _streamUrl='/api/media/'+encodeURIComponent(p.media_file_id||'')+'/stream';
+        thumbHtml='<div data-url="'+(p.original_url||'')+'" onclick="openTgUrl(this.dataset.url)" style="margin-bottom:10px;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;background:#0d0f14;height:180px">'
+          +'<video src="'+_streamUrl+'" muted preload="metadata" playsinline style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s" '
+          +'onloadeddata="this.currentTime=0.5" '
+          +'onseeked="this.style.opacity=1" '
+          +'onerror="this.style.display=\'none\'"></video>'
+          +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;background:linear-gradient(135deg,rgba(26,26,46,.7),rgba(22,33,62,.7))">'
+          +'<div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-size:18px">▶</div>'
+          +'</div>'
+          +'<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);border-radius:20px;padding:3px 8px;font-size:12px;color:#fff">▶ Відео</div>'
+          +'</div>';
+      }
+    }
+    d.innerHTML='';
+    if(thumbHtml){var _th=document.createElement('div');_th.innerHTML=thumbHtml;d.appendChild(_th.firstChild||_th);}
+    var _qm=document.createElement('div');_qm.className='q-media';_qm.innerHTML=miLabel+(p.source?' · <b>@'+p.source+'</b>':'');d.appendChild(_qm);
+    var _qt=document.createElement('div');_qt.className='q-text';_qt.innerHTML=(p.text||'<i style="color:var(--mu)">Только медиа</i>');d.appendChild(_qt);
+    if(Q_POSTBTN&&Q_POSTBTN.url){var _pb=document.createElement('span');_pb.style.cssText='display:block;margin-top:8px;font-size:13px';var _pba=document.createElement('a');_pba.href=Q_POSTBTN.url;_pba.style.cssText='color:var(--acc2);font-weight:700;text-decoration:none';_pba.textContent=(Q_POSTBTN.label||Q_POSTBTN.url);_pba.onclick=function(e){e.preventDefault();if(window.Telegram&&window.Telegram.WebApp)Telegram.WebApp.openLink(Q_POSTBTN.url);};_pb.appendChild(_pba);d.appendChild(_pb);}
+    var _qa=document.createElement('div');_qa.className='q-actions';_qa.innerHTML='<button class="q-btn q-ok" onclick="qAct('+p.id+',\'publish\',this)">✅ Опубликовать</button><button class="q-btn q-sk" onclick="qAct('+p.id+',\'skip\',this)">❌ Пропустить</button>';d.appendChild(_qa);
+    wrap.appendChild(d);
+  });
+}
+
+// TAIL - all functions after renderQ
+
+function showThumbFallback(img){
+  var p=img.parentNode;if(!p)return;
+  var mt=p.getAttribute('data-mtype')||'';
+  var icons={photo:'📸',video:'🎬',album:'📷',animation:'🎞'};
+  p.outerHTML='<div style="background:var(--sur2);border-radius:12px;padding:24px;text-align:center;margin-bottom:12px;font-size:36px">'+(icons[mt]||'📎')+'</div>';
+}
+async function qAct(id,action,btn){
+  const post=btn.closest('.q-post');if(post.dataset.busy)return;post.dataset.busy='1';
+  post.classList.add(action==='publish'?'ok-out':'sk-out');
+  try{
+    await api('POST','/api/queue/'+id+'/action',{action});
+    Q_DATA=Q_DATA.filter(p=>p.id!==id);
+    setTimeout(()=>{renderQ();loadChannels();},310);
+    if(action==='publish')toast('✅ Опубликовано!');
+  }catch(e){delete post.dataset.busy;post.classList.remove('ok-out','sk-out');toast('Помилка: '+e.message)}
+}
+
+async function openSrc(id){
+  CUR_CH=id;openOv('ov-src');
+  document.getElementById('src-list').innerHTML='<div class="sk" style="height:70px;border-radius:14px"></div>';
+  try{
+    const srcs=await api('GET','/api/channel/'+id+'/sources');
+    const el=document.getElementById('src-list');
+    if(!srcs.length){el.innerHTML='<div style="color:var(--mu);font-size:13px;padding:12px 0">Нет источников</div>';return}
+    el.innerHTML=srcs.map(function(s){
+      const hasSig=s.signature&&s.signature.length>2;
+      const sigHtml=hasSig
+        ?'<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">🤖 Авто-паттерн</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">✕ Скинути</button></div>'
+        :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">⏳ Паттерн ще шукається...</div></div>';
+      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||('@'+s.username))+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">@'+s.username+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\'@'+s.username+'\')">✏️ Патерни</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
+    }).join('');
+  }catch(e){toast('Помилка')}
+}
+
+async function addSrc(){
+  const inp=document.getElementById('src-inp');
+  const btn=document.querySelector('#ov-src .btn.bg');
+  let un=inp.value.trim();
+  un=un.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
+  if(!un){toast('Введи username джерела');return;}
+  const orig=btn?btn.textContent:'';
+  if(btn){btn.textContent='⏳...';btn.disabled=true;}
+  try{
+    await api('POST','/api/channel/'+CUR_CH+'/sources',{username:un});
+    inp.value='';
+    toast('✅ Джерело @'+un+' додано! Шукаємо паттерн...');
+    await openSrc(CUR_CH);
+    await loadChannels();
+  }catch(e){
+    let msg=e.message;
+    try{const p=JSON.parse(msg);msg=p.error||p.message||msg;}catch{}
+    toast('Помилка: '+msg);
+  }
+  if(btn){btn.textContent=orig;btn.disabled=false;}
+}
+
+async function resetSig(srcId){
+  if(!confirm('Скинути авто-паттерн?'))return;
+  try{await api('POST','/api/source/'+srcId+'/reset_sig',{});toast('✅ Паттерн скинуто');openSrc(CUR_CH);}
+  catch(e){toast('Помилка: '+e.message)}
+}
+
+async function delSrc(id){
+  if(!confirm('Видалити джерело?'))return;
+  try{await api('DELETE','/api/source/'+id);toast('Удалено');openSrc(CUR_CH);}
+  catch(e){toast('Помилка: '+e.message)}
+}
+
+async function openPat(srcId,name){
+  CUR_SRC=srcId;document.getElementById('ov-pat-t').textContent='Паттерны '+name;openOv('ov-pat');
+  try{
+    const srcs=await api('GET','/api/channel/'+CUR_CH+'/sources');
+    const src=srcs.find(function(s){return s.id===srcId;});if(!src)return;
+    const aEl=document.getElementById('auto-pats'),mEl=document.getElementById('man-pats');
+    const autos=(src.patterns||[]).filter(function(p){return p.auto;}),mans=(src.patterns||[]).filter(function(p){return !p.auto;});
+    aEl.innerHTML=autos.length?autos.map(function(p){return '<div class="pat-tag pat-auto">'+p.pattern+'</div>';}).join(''):'<span style="font-size:12px;color:var(--mu)">Ещё не найдены</span>';
+    mEl.innerHTML=mans.length?mans.map(function(p){return '<div class="pat-tag">'+p.pattern+' <span class="pat-rm" onclick="delPat('+p.id+',this)">×</span></div>';}).join(''):'';
+  }catch(e){toast('Помилка')}
+}
+
+async function addPat(){
+  const inp=document.getElementById('pat-inp'),pat=inp.value.trim();if(!pat||!CUR_SRC)return;
+  try{
+    const r=await api('POST','/api/source/'+CUR_SRC+'/patterns',{pattern:pat});
+    inp.value='';
+    const tag=document.createElement('div');tag.className='pat-tag';
+    tag.innerHTML=pat+' <span class="pat-rm" onclick="delPat('+r.id+',this)">×</span>';
+    document.getElementById('man-pats').appendChild(tag);toast('✅ Добавлен');
+  }catch(e){toast('Помилка: '+e.message)}
+}
+
+async function delPat(id,el){
+  try{await api('DELETE','/api/pattern/'+id);el.closest('.pat-tag').remove();toast('Удалён');}
+  catch(e){toast('Помилка: '+e.message)}
+}
+
+async function loadFin(){
+  try{
+    const d=await api('GET','/api/finance');
+    document.getElementById('fin-bal').textContent='$'+d.balance.toFixed(2);
+    document.getElementById('tb-bal').textContent='$'+d.balance.toFixed(2);
+    if(ME)ME.balance=d.balance;
+    const active=CHANNELS.filter(function(c){return c.subscription_status==='active'||c.subscription_status==='trial';});
+    const paid=active.filter(function(c){return c.subscription_status==='active';});
+    document.getElementById('fin-sub').textContent=active.length+' слот(ів) · ~$'+(paid.length*(CFG.price_per_slot||2)).toFixed(0)+'/міс';
+    document.getElementById('fin-slots').innerHTML=CHANNELS.map(function(ch){
+      const isTrial=ch.subscription_status==='trial';
+      const isActive=ch.subscription_status==='active';
+      const isExp=!isTrial&&!isActive;
+      const badge=isTrial
+        ?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.3)">🧪 Пробний</span>'
+        :isActive
+        ?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(45,212,160,.15);color:#2dd4a0">✅ Активний</span>'
+        :'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;background:rgba(240,90,90,.18);color:#f05a5a;border:1px solid rgba(240,90,90,.35)">❌ Закінчилась</span>';
+      const buyBtn=isExp||isTrial
+        ?'<button class="btn bp" style="padding:6px 12px;font-size:11px;width:auto" onclick="buySlot('+ch.id+')">Оплатити $'+(CFG.price_per_slot||2)+'</button>'
+        :'<span class="sr-v" style="color:var(--grn)">$'+(CFG.price_per_slot||2)+'/міс</span>';
+      return '<div class="sr"><div class="sr-l"><div class="sr-t">'+(ch.title||ch.username)+'</div><div class="sr-s" style="display:flex;align-items:center;gap:6px;margin-top:4px">'+badge+' <span>'+(ch.subscription_days||0)+' днів</span></div></div>'+buyBtn+'</div>';
+    }).join('')+'<div class="sr tap" onclick="openBuySlot()"><div class="sr-l"><div class="sr-t">+ Новий слот</div></div><span class="sr-v">$'+(CFG.price_per_slot||2)+'/міс →</span></div>';
+    document.getElementById('fin-hist').innerHTML=!d.transactions||!d.transactions.length
+      ?'<div style="font-size:13px;color:var(--mu);padding:13px 0">Історія порожня</div>'
+      :d.transactions.map(function(t){const plus=t.amount>0;return '<div class="hi"><div class="hd" style="background:'+(plus?'var(--grn)':'var(--red)')+'"></div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+(t.description||t.type)+'</div><div style="font-size:11px;color:var(--mu)">'+(t.created_at||'').substring(0,10)+'</div></div><div style="font-size:14px;font-weight:700;color:'+(plus?'var(--grn)':'var(--red)')+'">'+(plus?'+':'')+'$'+Math.abs(t.amount).toFixed(2)+'</div></div>';}).join('');
+  }catch(e){console.error(e)}
+}
+
+async function loadRef(){
+  try{
+    const d=await api('GET','/api/referral');
+    const botU=ME&&ME.bot_username?ME.bot_username:'SocialGiant_AutoPost_bot';
+    const refUrl='https://t.me/'+botU+'?start='+(d.code||'');
+    document.getElementById('ref-code-tx').textContent=refUrl;
+    document.getElementById('ref-tot').textContent=d.stats&&d.stats.total?d.stats.total:0;
+    document.getElementById('ref-earn').textContent='$'+((d.stats&&d.stats.earned)||0).toFixed(2);
+    document.getElementById('ref-list').innerHTML=!d.referrals||!d.referrals.length
+      ?'<div style="font-size:13px;color:var(--mu);padding:13px 0">Пока нет рефералов</div>'
+      :d.referrals.map(function(r){return '<div class="hi"><div class="hd" style="background:'+(r.status==='paid'?'var(--grn)':'var(--mu)')+'"></div><div style="flex:1"><div style="font-size:13px;font-weight:600">@'+(r.username||r.first_name||'user')+'</div><div style="font-size:11px;color:var(--mu)">'+(r.created_at||'').substring(0,10)+' · '+(r.status==='paid'?'оплачений':'тріал')+'</div></div><div style="font-size:14px;font-weight:700;color:'+(r.status==='paid'?'var(--grn)':'var(--mu)')+'">'+(r.status==='paid'?'+$'+parseFloat(r.bonus_amount||0).toFixed(2):'$0')+'</div></div>';}).join('');
+  }catch(e){}
+}
+
+function copyRef(){
+  const url=document.getElementById('ref-code-tx').textContent;
+  navigator.clipboard&&navigator.clipboard.writeText(url);
+  const l=document.getElementById('ref-copy-lbl');
+  l.textContent='✓ Скопировано';setTimeout(function(){l.textContent='📋 Копировать';},2000);
+}
+
+function shareRef(){
+  const url=document.getElementById('ref-code-tx').textContent;
+  if(TG)TG.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(url));
+  else window.open('https://t.me/share/url?url='+encodeURIComponent(url));
+}
+
+function loadSetPage(){
+  if(!ME)return;
+  const u=TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user;
+  document.getElementById('me-name').textContent='@'+(u&&u.username?u.username:ME.telegram_id);
+  document.getElementById('me-meta').textContent='ID: '+ME.telegram_id+' · с '+(ME.created_at||'').substring(0,10);
+  const ss=ME.service_stats||{};
+  document.getElementById('srv-u').textContent=ss.total_users||'—';
+  document.getElementById('srv-c').textContent=ss.total_channels||'—';
+  document.getElementById('srv-p').textContent=ss.total_published>999?Math.round(ss.total_published/1000)+'K':(ss.total_published||'—');
+  document.getElementById('srv-d').textContent=ss.days_running||'—';
+  document.getElementById('st-ref').textContent=ME.ref_stats&&ME.ref_stats.total||0;
+  document.getElementById('st-ch').textContent=CHANNELS.length;
+  document.getElementById('st-pub').textContent=CHANNELS.reduce(function(a,c){return a+(c.total_published||0);},0);
+  if(ME.created_at)document.getElementById('st-days').textContent=Math.floor((Date.now()-new Date(ME.created_at))/86400000)+'д';
+}
+
+function fillPaySelect(){/* channel select removed */}
+
+function openBuySlot(){
+  const price=CFG.price_per_slot||2;
+  if(ME&&ME.balance>=price){
+    if(confirm('Купити слот за $'+price.toFixed(2)+' з балансу ($'+(ME.balance||0).toFixed(2)+')?')){
+      api('POST','/api/pay/from_balance',{channel_id:null,days:30})
+        .then(function(r){toast('✅ Слот оплачено!');ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);loadChannels();})
+        .catch(function(e){toast('Помилка: '+e.message);});
+    }
+    return;
+  }
+  // Insufficient balance — redirect to Finance
+  toast('⚠️ Недостатньо коштів. Поповніть баланс!',3000);
+  setTimeout(function(){goTo('s-fin','Фінанси');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},300);},600);
+}
+
+function buySlot(chId){
+  const price=CFG.price_per_slot||2;
+  if(ME&&ME.balance>=price){confirmSlotFromBalance(chId,price);return;}
+  // Insufficient balance — redirect to Finance tab with notification
+  toast('⚠️ Недостатньо коштів — поповніть баланс!',3200);
+  setTimeout(function(){
+    goTo('s-fin','Фінанси');setNav('nfin');
+    setTimeout(function(){
+      const hero=document.querySelector('.bal-hero');
+      if(hero){hero.style.boxShadow='0 0 0 2.5px var(--red)';setTimeout(function(){hero.style.boxShadow='';},2500);}
+      openPayModal('crypto', true); // true = show "insufficient funds" banner
+    },350);
+  },700);
+}
+
+async function toggleAutorenew(chId,cb){
+  const ch=CHANNELS.find(c=>c.id===chId);
+  if(!ch)return;
+  const s=Object.assign({},ch.settings||{},{autorenew_enabled:cb.checked});
+  try{
+    await api('POST','/api/channel/'+chId+'/settings',s);
+    if(ch.settings)ch.settings.autorenew_enabled=cb.checked;
+    toast(cb.checked?'🔄 Автопродовження підписки увімкнено':'🔕 Автопродовження підписки вимкнено');
+  }catch(e){
+    cb.checked=!cb.checked; // revert on error
+    toast('Помилка: '+e.message);
+  }
+}
+
+async function confirmSlotFromBalance(chId,price){
+  const ch=CHANNELS.find(function(c){return c.id===chId;});
+  const name=ch?'@'+(ch.username||ch.title):'канал';
+  if(!confirm('Активувати '+name+' за $'+price.toFixed(2)+' з балансу ($'+(ME&&ME.balance||0).toFixed(2)+')?'))return;
+  try{
+    const r=await api('POST','/api/pay/from_balance',{channel_id:chId,days:30});
+    toast('✅ Підписку активовано для '+name+'!');
+    ME.balance=r.new_balance;
+    document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);
+    await loadChannels();
+  }catch(e){
+    let msg=e.message;
+    try{const p=JSON.parse(msg);msg=p.message||msg;}catch{}
+    // If insufficient balance → redirect to Finance
+    if(msg.indexOf('Недостаточно')>=0||msg.indexOf('Недостатньо')>=0||msg.indexOf('Insufficient')>=0||msg.indexOf('insufficient')>=0){
+      toast('⚠️ Недостатньо коштів — поповніть баланс!',3200);
+      setTimeout(function(){goTo('s-fin','Фінанси');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},350);},700);
+    } else {
+      toast('❌ '+msg);
+    }
+  }
+}
+
+function openPayModal(type, showInsufficientBanner){
+  document.getElementById('pay-crypto-block').style.display=type==='crypto'?'block':'none';
+  document.getElementById('pay-card-block').style.display=type==='card'?'block':'none';
+  document.getElementById('pay-invoice-block').style.display='none';
+  const cryptoBtn=document.getElementById('pay-crypto-btn');
+  if(cryptoBtn){cryptoBtn.style.display='';cryptoBtn.disabled=false;cryptoBtn.textContent='₿ Створити рахунок';}
+  document.getElementById('pay-modal-title').textContent=type==='crypto'?'Поповнення балансу':'Поповнення карткою';
+  const mgr=CFG.manager||'manager';
+  const mgrEl=document.getElementById('pay-manager-link');
+  if(mgrEl) mgrEl.textContent='@'+mgr;
+  // Insufficient funds banner
+  const banner=document.getElementById('pay-insuf-banner');
+  if(banner) banner.style.display=showInsufficientBanner?'block':'none';
+  document.getElementById('pay-modal').classList.add('on');
+}
+
+function closePayModal(e){
+  if(!e||e.target===document.getElementById('pay-modal'))
+    document.getElementById('pay-modal').classList.remove('on');
+}
+
+async function doCryptoPay(){
+  const amount=parseFloat(document.getElementById('pay-amount').value);
+  if(!amount||amount<1){toast('Введи суму (мінімум $1)');return;}
+  const btn=document.getElementById('pay-crypto-btn');
+  btn.textContent='Створюю рахунок...';btn.disabled=true;
+  try{
+    // channel_id is null — this is a balance top-up, not direct channel payment
+    const r=await api('POST','/api/pay/crypto',{amount:amount,channel_id:null,days:30});
+    CUR_INVOICE=r.invoice_id;
+    document.getElementById('pay-link-btn').dataset.url=r.pay_url;
+    document.getElementById('pay-invoice-block').style.display='block';
+    btn.style.display='none';
+    toast('✅ Рахунок створено!');
+  }catch(e){toast('Помилка: '+e.message);}
+  btn.textContent='₿ Створити рахунок';btn.disabled=false;
+}
+
+function openPayLink(){
+  const url=document.getElementById('pay-link-btn').dataset.url;
+  if(!url)return;
+  if(TG)TG.openTelegramLink(url);else window.open(url);
+}
+
+async function checkInvoice(){
+  if(!CUR_INVOICE){toast('Немає активного рахунку');return;}
+  try{
+    const r=await api('GET','/api/pay/check/'+CUR_INVOICE);
+    if(r.paid){
+      toast('🎉 Оплата пройшла! Баланс поповнено.');
+      document.getElementById('pay-modal').classList.remove('on');
+      const me=await api('GET','/api/me');
+      document.getElementById('tb-bal').textContent='$'+me.balance.toFixed(2);
+      ME=me;
+      await loadChannels();
+      // If we're on finance screen, reload it too
+      if(document.getElementById('s-fin').classList.contains('on')) await loadFin();
+    }else{toast('Оплата ще не отримана. Спробуй через хвилину.');}
+  }catch(e){toast('Помилка перевірки');}
+}
+
+function openManager(){
+  const mgr=CFG.manager||'support';
+  if(TG)TG.openTelegramLink('https://t.me/'+mgr);else window.open('https://t.me/'+mgr);
+}
+
+async function reprocessSig(chId){
+  try{
+    await api('POST','/api/channel/'+chId+'/reprocess_sig',{});
+    toast('🧹 Паттерн застосовано до всіх постів!');
+  }catch(e){toast('Помилка: '+e.message)}
+}
+function openTgUrl(url){
+  if(!url)return;
+  try{
+    if(window.Telegram&&window.Telegram.WebApp)Telegram.WebApp.openLink(url);
+    else window.open(url,'_blank');
+  }catch(e){window.open(url,'_blank');}
+}
+async function parseNow(chId,btn){
+  const orig=btn.textContent;
+  btn.textContent='⏳ Запускаю...';btn.disabled=true;
+  try{
+    await api('POST','/api/channel/'+chId+'/parse',{});
+    toast('🔄 Парсинг запущено! Пости з\'являться за ~1 хв');
+    btn.textContent='✅ Запущено';
+    // Refresh queue count after 90 seconds
+    setTimeout(async function(){
+      btn.textContent=orig;btn.disabled=false;
+      await loadChannels();
+    },90000);
+    // Also refresh after 10s (quick posts)
+    setTimeout(async function(){await loadChannels();},10000);
+  }catch(e){toast('Помилка: '+e.message);btn.textContent=orig;btn.disabled=false;}
+}
+
+async function loadAdminData(){
+  try{
+    const d=await api('GET','/api/admin/stats');
+    document.getElementById('adm-u').textContent=d.total_users||0;
+    document.getElementById('adm-c').textContent=d.total_channels||0;
+    document.getElementById('adm-p').textContent=d.total_published||0;
+    document.getElementById('adm-r').textContent='$'+(d.total_revenue||0).toFixed(0);
+    const users=await api('GET','/api/admin/users');
+    document.getElementById('adm-users').innerHTML=users.slice(0,20).map(function(u){
+      return '<div class="adm-ur" onclick="prefAdm('+u.telegram_id+')"><div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#7c5af0);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">👤</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@'+(u.username||u.first_name||u.telegram_id)+'</div><div style="font-size:11px;color:var(--mu)">ID: '+u.telegram_id+'</div></div><div style="font-size:14px;font-weight:700;color:var(--grn)">$'+(u.balance||0).toFixed(2)+'</div></div>';
+    }).join('');
+  }catch(e){toast('Помилка: '+e.message);}
+}
+
+function prefAdm(id){document.getElementById('adm-tid').value=id;admFind();}
+
+async function admFind(){
+  const tid=document.getElementById('adm-tid').value.trim();if(!tid)return;
+  try{
+    ADM_U=await api('GET','/api/admin/user/'+tid);
+    document.getElementById('adm-found').style.display='block';
+    document.getElementById('adm-fn').textContent='@'+(ADM_U.username||ADM_U.first_name||ADM_U.telegram_id);
+    document.getElementById('adm-fi').textContent='ID: '+ADM_U.telegram_id+' · '+(ADM_U.channels&&ADM_U.channels.length||0)+' каналов';
+    document.getElementById('adm-fb').textContent='$'+(ADM_U.balance||0).toFixed(2);
+  }catch(e){toast('Не знайдено');}
+}
+
+async function admBal(){
+  if(!ADM_U)return;
+  const delta=parseFloat(document.getElementById('adm-delta').value);
+  const note=document.getElementById('adm-note').value.trim()||'Ручне змінення (admin)';
+  if(!delta){toast('Введи суму');return;}
+  try{
+    const r=await api('POST','/api/admin/balance',{telegram_id:ADM_U.telegram_id,delta:delta,note:note});
+    toast('✅ Баланс: $'+r.new_balance.toFixed(2));
+    document.getElementById('adm-fb').textContent='$'+r.new_balance.toFixed(2);
+    document.getElementById('adm-delta').value='';
+    if(ADM_U.telegram_id===ME&&ME.telegram_id){ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);}
+  }catch(e){toast('Помилка: '+e.message);}
+}
+
+async function admSetSub(status){
+  const chId=parseInt(document.getElementById('adm-ch-id').value);
+  const days=parseInt(document.getElementById('adm-ch-days').value)||30;
+  if(!chId){toast('Введи ID каналу');return;}
+  try{
+    await api('POST','/api/admin/setsub',{channel_id:chId,status:status,days:days});
+    toast('✅ Статус оновлено: '+status);
+  }catch(e){toast('Помилка: '+e.message);}
+}
+
+async function admBroadcast(){
+  const text=document.getElementById('adm-bc-text').value.trim();
+  if(!text){toast('Введи текст');return;}
+  const res=document.getElementById('adm-bc-result');
+  res.textContent='⏳ Надсилаю...';
+  try{
+    const r=await api('POST','/api/admin/broadcast',{text:text});
+    res.textContent='✅ Надіслано: '+r.sent+' / Помилок: '+r.errors;
+    document.getElementById('adm-bc-text').value='';
+  }catch(e){res.textContent='Помилка: '+e.message;}
+}
+
+var TITLES={'s-ch':'Мої канали','s-fin':'Фінанси','s-boost':'Просування','s-ref':'Реферали','s-set':'Профіль'};
+function goTo(id,title){
+  document.querySelectorAll('.scr').forEach(function(s){s.classList.remove('on');});
+  document.getElementById(id).classList.add('on');
+  document.getElementById('tb-title').textContent=title||TITLES[id]||'';
+  if(id==='s-fin')loadFin();
+  if(id==='s-ref')loadRef();
+  if(id==='s-set')loadSetPage();
+}
+function setNav(id){
+  document.querySelectorAll('.ni,.nc').forEach(function(n){n.classList.remove('on');});
+  document.getElementById(id).classList.add('on');
+}
+function openOv(id){
+  document.getElementById(id).classList.add('on');
+  if(id==='ov-adm')loadAdminData();
+}
+function closeOv(id){document.getElementById(id).classList.remove('on');}
+function toast(msg,d){
+  d=d||2600;
+  const el=document.createElement('div');el.className='toast';el.textContent=msg;
+  document.body.appendChild(el);setTimeout(function(){el.remove();},d);
+}
+
+// ── VIDEO OVERLAY ──────────────────────────────────────────────────────────
+
+
+
+
+
+
+function openAddCh(){
+  document.getElementById('add-ch-modal').classList.add('on');
+  document.getElementById('add-ch-inp').value='';
+  document.getElementById('add-ch-err').style.display='none';
+  const botName=ME&&ME.bot_username?ME.bot_username:'SocialGiant_AutoPost_bot';
+  document.getElementById('add-bot-name').textContent='@'+botName;
+  document.getElementById('add-bot-link').href='https://t.me/'+botName;
+}
+function closeAddCh(e){
+  if(!e||e.target===document.getElementById('add-ch-modal'))
+    document.getElementById('add-ch-modal').classList.remove('on');
+}
+async function doAddChannel(){
+  const inp=document.getElementById('add-ch-inp');
+  let username=inp.value.trim();
+  username=username.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
+  const errEl=document.getElementById('add-ch-err');
+  if(!username){errEl.textContent='Введите username канала';errEl.style.display='block';return;}
+  const btn=document.getElementById('add-ch-btn');
+  btn.textContent='Добавляю...';btn.disabled=true;errEl.style.display='none';
+  try{
+    const r=await api('POST','/api/channel/add',{username:username});
+    document.getElementById('add-ch-modal').classList.remove('on');
+    toast(r.trial?'🎉 Канал додано! '+r.trial_days+' днів безкоштовно':'✅ Канал @'+r.username+' додано');
+    await loadChannels();
+  }catch(e){
+    let msg=e.message;
+    try{const p=JSON.parse(msg);msg=p.message||msg;}catch{}
+    errEl.textContent=msg;errEl.style.display='block';
+  }
+  btn.textContent='Додати канал';btn.disabled=false;
+}
+
+goTo('s-ch','Мої канали');setNav('nch');init();
+
+</script>
+</body>
+</html>
