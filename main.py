@@ -360,7 +360,8 @@ async def api_me(request):
     pub_stats = {}
     try:
         pub_stats = await get_admin_stats()
-    except: pass
+    except Exception as e:
+        log.error(f"get_admin_stats error: {e}")
     bot_username = ""
     try:
         if _bot_instance:
@@ -372,19 +373,21 @@ async def api_me(request):
         "username": user.get("username",""), "first_name": user.get("first_name",""),
         "created_at": user.get("created_at",""), "balance": round(balance, 2),
         "language": user.get("language", "ru"),
+        "notifications": user.get("notifications", 1) != 0,
         "ref_code": ref_code, "ref_stats": ref, "service_stats": pub_stats,
         "is_admin": tg_id in ADMIN_IDS, "bot_username": bot_username})
 
 @_auth
 async def api_channels(request):
-    from services import get_user_channels, get_channel_settings, count_pending_posts
+    from services import get_user_channels, get_channel_settings, count_pending_posts, count_published_posts
     tg_id = request["tg_user"]["id"]
     channels = await get_user_channels(tg_id)
     result = []
     for ch in channels:
         s = await get_channel_settings(ch["id"])
         q = await count_pending_posts(ch["id"])
-        result.append({**ch, "settings": s, "queue_count": q})
+        pub = await count_published_posts(ch["id"])
+        result.append({**ch, "settings": s, "queue_count": q, "total_published": pub})
     return _j(result)
 
 @_auth
@@ -772,7 +775,7 @@ async def api_referral(request):
             "WHERE r.referrer_id = ?", (user["id"],))
         total = len(refs)
         earned_row = await _fetchone(db,
-            "SELECT COALESCE(SUM(amount),0) as e FROM transactions WHERE user_id=? AND type='referral_bonus'",
+            "SELECT COALESCE(SUM(bonus_amount),0) as e FROM referrals WHERE referrer_id=? AND status='paid'",
             (user["id"],))
     earned = float(earned_row["e"]) if earned_row else 0.0
     return _j({"code":code,"stats":{"total":total,"earned":earned},"referrals":refs})
@@ -1011,6 +1014,16 @@ async def api_set_language(request):
     return _j({"ok": True, "lang": lang})
 
 @_auth
+async def api_set_notifications(request):
+    """Set user notification preference."""
+    from services import set_user_notifications
+    tg_id = request["tg_user"]["id"]
+    body = await request.json()
+    enabled = body.get("enabled", True)
+    await set_user_notifications(tg_id, enabled)
+    return _j({"ok": True, "enabled": enabled})
+
+@_auth
 async def api_check_subscriptions(request):
     """Check if user is subscribed to required channels."""
     from services import check_user_channel_subscriptions, _bot_instance, REQUIRED_CHANNELS
@@ -1129,6 +1142,7 @@ async def start_webapp():
     app.router.add_get   ("/api/channel/{id}/photo",       api_channel_photo)
     # New endpoints
     app.router.add_post  ("/api/set_language",              api_set_language)
+    app.router.add_post  ("/api/set_notifications",         api_set_notifications)
     app.router.add_get   ("/api/check_subscriptions",       api_check_subscriptions)
     app.router.add_get   ("/api/admin/channels",            api_admin_all_channels)
     app.router.add_post  ("/api/admin/user/block",          api_admin_user_block)

@@ -79,7 +79,7 @@ ADMIN_IDS: List[int] = [int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.st
 
 BOT_TOKEN            = os.getenv("BOT_TOKEN", "")
 BOT_USERNAME         = os.getenv("BOT_USERNAME", "")
-BOT_LAUNCH_DATE      = os.getenv("BOT_LAUNCH_DATE", str(date.today()))
+BOT_LAUNCH_DATE      = os.getenv("BOT_LAUNCH_DATE", str(date.today() - timedelta(days=1)))
 BOT_OWNER_USERNAME   = os.getenv("BOT_OWNER_USERNAME", "")
 MANAGER_USERNAME     = os.getenv("MANAGER_USERNAME", "")
 # REQUIRED_CHANNELS формат: "Назва|https://t.me/username,Назва2|https://t.me/username2"
@@ -195,6 +195,7 @@ async def init_db():
             first_name TEXT,
             last_name TEXT,
             language TEXT DEFAULT 'ru',
+            notifications INTEGER DEFAULT 1,
             is_blocked INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -365,6 +366,14 @@ async def init_db():
         "ALTER TABLE sources ADD COLUMN title TEXT",
         "ALTER TABLE transactions ADD COLUMN description TEXT",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_posts_unique ON raw_posts(channel_id, source_id, tg_message_id)",
+        "ALTER TABLE users ADD COLUMN notifications INTEGER DEFAULT 1",
+        # Performance indexes for high volume (1000+ channels)
+        "CREATE INDEX IF NOT EXISTS idx_pp_status ON processed_posts(status, raw_post_id)",
+        "CREATE INDEX IF NOT EXISTS idx_rp_channel ON raw_posts(channel_id, source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ch_sub ON channels(subscription_status)",
+        "CREATE INDEX IF NOT EXISTS idx_src_channel ON sources(channel_id, is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_pp_published ON processed_posts(status, published_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_rp_grouped ON raw_posts(grouped_id)",
         ]:
             try:
                 await db.execute(sql)
@@ -403,6 +412,14 @@ async def set_user_language(telegram_id: int, lang: str):
         lang = "ru"
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         await db.execute("UPDATE users SET language=? WHERE telegram_id=?", (lang, telegram_id))
+        await db.commit()
+
+
+async def set_user_notifications(telegram_id: int, enabled: bool):
+    """Set user notification preference (balance top-up, referrals only)."""
+    val = 1 if enabled else 0
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        await db.execute("UPDATE users SET notifications=? WHERE telegram_id=?", (val, telegram_id))
         await db.commit()
 
 
@@ -456,8 +473,12 @@ async def check_user_channel_subscriptions(bot, user_id: int) -> dict:
     for ch in REQUIRED_CHANNELS:
         url = ch.get("url", "")
         name = ch.get("name", "")
-        # Extract username from URL
-        username = url.rstrip("/").split("/")[-1] if "t.me/" in url else ""
+        # Extract username from URL (handle t.me/username/123 message links)
+        username = ""
+        if "t.me/" in url:
+            parts = url.rstrip("/").split("t.me/", 1)[-1].split("/")
+            # First part after t.me/ is the username, rest may be message id
+            username = parts[0] if parts else ""
         if not username:
             continue
         try:
@@ -841,7 +862,16 @@ async def count_pending_posts(channel_id: int) -> int:
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         row = await _fetchone(db, "SELECT COUNT(*) as cnt FROM processed_posts pp "
             "JOIN raw_posts rp ON rp.id=pp.raw_post_id "
-            "WHERE rp.channel_id=? AND pp.status IN ('pending','awaiting_confirm','confirm_skipped')", (channel_id,))
+            "WHERE rp.channel_id=? AND pp.status IN ('pending','awaiting_confirm','confirm_skipped') "
+            "AND (COALESCE(pp.cleaned_text,'')!='' OR COALESCE(rp.media_file_id,'')!='' OR COALESCE(rp.media_files_json,'')!='')", (channel_id,))
+        return row["cnt"] if row else 0
+
+
+async def count_published_posts(channel_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        row = await _fetchone(db, "SELECT COUNT(*) as cnt FROM processed_posts pp "
+            "JOIN raw_posts rp ON rp.id=pp.raw_post_id "
+            "WHERE rp.channel_id=? AND pp.status='published'", (channel_id,))
         return row["cnt"] if row else 0
 
 
@@ -1064,19 +1094,36 @@ def sanitize_html_for_telegram(text: str) -> str:
 
 
 def _truncate_html(text: str, byte_limit: int) -> str:
-    """Truncate HTML text to byte_limit without breaking tags or entities."""
+    """Truncate HTML text to byte_limit, cutting at last sentence or word boundary."""
     import re as _r
     if len(text.encode("utf-8")) <= byte_limit:
         return text
-    # Strip all tags to get plain text, truncate, return plain (safe fallback)
-    plain = _r.sub(r"<[^>]+>", "", text)
-    truncated = plain.encode("utf-8")[:byte_limit - 3].decode("utf-8", errors="ignore").rstrip()
-    return truncated + "…"
+    # Try to keep HTML tags intact by tracking open/close
+    # Fallback: find a good cut point in raw text
+    cut = byte_limit - 3
+    truncated = text.encode("utf-8")[:cut].decode("utf-8", errors="ignore")
+    # Cut at last sentence end (.!?) or newline
+    for sep in ['. ', '! ', '? ', '.\n', '!\n', '?\n', '\n\n', '\n']:
+        idx = truncated.rfind(sep)
+        if idx > len(truncated) * 0.5:
+            truncated = truncated[:idx + len(sep)].rstrip()
+            break
+    else:
+        # Cut at last space to avoid broken words
+        idx = truncated.rfind(' ')
+        if idx > len(truncated) * 0.3:
+            truncated = truncated[:idx]
+    # Close any open HTML tags
+    open_tags = _r.findall(r'<(b|i|u|s|code|pre|a)\b[^>]*>', truncated, _r.I)
+    close_tags = _r.findall(r'</(b|i|u|s|code|pre|a)>', truncated, _r.I)
+    for tag in reversed(open_tags[len(close_tags):]):
+        truncated += f'</{tag}>'
+    return truncated
 
 
 def _safe_caption(text: str, limit: int = 1024) -> str:
     """Truncate caption to Telegram caption limit (1024 bytes).
-    Preserves postbtn link at end. Strips HTML tags before truncating to avoid broken markup."""
+    Preserves postbtn link at end. Cuts at sentence/word boundary."""
     import re as _r
     if not text:
         return ""
@@ -1087,16 +1134,13 @@ def _safe_caption(text: str, limit: int = 1024) -> str:
     link_suffix = link_match.group(1) if link_match else ""
     body = text[:link_match.start()] if link_match else text
     suffix_bytes = len(link_suffix.encode("utf-8"))
-    body_limit = limit - suffix_bytes - 4  # reserve for "…"
-    # Strip HTML to avoid broken tags on truncation
-    plain_body = _r.sub(r"<[^>]+>", "", body)
-    truncated = plain_body.encode("utf-8")[:body_limit].decode("utf-8", errors="ignore").rstrip()
-    return truncated + "…" + link_suffix
+    body_limit = limit - suffix_bytes - 1
+    return _truncate_html(body, body_limit) + link_suffix
 
 
 def _safe_text(text: str, limit: int = 4096) -> str:
     """Truncate message text to Telegram message limit (4096 bytes).
-    Preserves postbtn link at end."""
+    Preserves postbtn link at end. Cuts at sentence/word boundary."""
     import re as _r
     if not text:
         return ""
@@ -1107,10 +1151,8 @@ def _safe_text(text: str, limit: int = 4096) -> str:
     link_suffix = link_match.group(1) if link_match else ""
     body = text[:link_match.start()] if link_match else text
     suffix_bytes = len(link_suffix.encode("utf-8"))
-    body_limit = limit - suffix_bytes - 4
-    plain_body = _r.sub(r"<[^>]+>", "", body)
-    truncated = plain_body.encode("utf-8")[:body_limit].decode("utf-8", errors="ignore").rstrip()
-    return truncated + "…" + link_suffix
+    body_limit = limit - suffix_bytes - 1
+    return _truncate_html(body, body_limit) + link_suffix
 
 
 def build_footer(settings: dict, has_media: bool = False) -> str:
@@ -1788,10 +1830,24 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
     ai_mode = settings.get("ai_mode", "on")
     channel_lang = settings.get("channel_lang", "off")
 
+    # Build content filter list from settings
+    _content_filters = []
+    if settings.get("filter_violence"): _content_filters.append("violence, gore, graphic violence")
+    if settings.get("filter_sexual"): _content_filters.append("sexual content, pornography, 18+ content")
+    if settings.get("filter_gambling"): _content_filters.append("gambling, casino, betting, slots")
+    if settings.get("filter_drugs"): _content_filters.append("drugs, narcotics, drug use")
+
     async with _ai_semaphore:
         try:
-            # Step 4: AI classify
-            verdict = await _call_ai(AD_CLASSIFY_PROMPT, body_for_check)
+            # Step 4: AI classify (ad + content filters)
+            classify_prompt = AD_CLASSIFY_PROMPT
+            if _content_filters:
+                classify_prompt += (
+                    "\n\nADDITIONALLY, also classify as AD (reject) if the post contains: "
+                    + "; ".join(_content_filters)
+                    + ".\nThese content types must be filtered out."
+                )
+            verdict = await _call_ai(classify_prompt, body_for_check)
             await asyncio.sleep(0.2)
             log.info(f"  [S4] classify verdict: {repr(verdict.strip()[:60])}")
             if verdict.strip().upper().startswith("AD"):
@@ -1810,12 +1866,15 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
                         f"SIGNATURE TO REMOVE: {_sig_lines}"
                     )
                 rephrased = await _call_ai(_rephrase_prompt, cleaned)
-                await asyncio.sleep(0.2)
                 log.info(f"  [S5] rephrase END: {repr(_plain(rephrased)[-120:])}")
                 if _is_ai_refusal(rephrased):
                     log.info("  [S5] AI refused/censored → skip post")
                     return ""
                 if rephrased and rephrased.strip() and len(rephrased) > 10:
+                    # Strip any links/URLs that AI might have added
+                    rephrased = _re_chk.sub(r'https?://\S+', '', rephrased)
+                    rephrased = _re_chk.sub(r'<a\s+href=[^>]+>.*?</a>', '', rephrased, flags=_re_chk.DOTALL)
+                    rephrased = _re_chk.sub(r'@[A-Za-z0-9_]{3,}', '', rephrased)
                     cleaned = rephrased
             else:
                 log.info("  [S5] rephrase disabled (ai_mode=off)")
@@ -1837,15 +1896,19 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
                     f"Translate the following Telegram post to {lang_name}.\n"
                     "Keep ALL HTML tags exactly as-is.\n"
                     "Keep all facts, numbers, names unchanged.\n"
+                    "Do NOT add any links, URLs, @usernames or info not in the original.\n"
                     "Output ONLY the translated text. Nothing else."
                     + _sig_note
                 )
                 result = await _call_ai(translate_prompt, cleaned)
-                await asyncio.sleep(0.3)
                 if _is_ai_refusal(result):
                     log.info("  [S6] AI refused translation → skip post")
                     return ""
                 if result and result.strip():
+                    # Strip any links/URLs that AI might have added
+                    result = _re_chk.sub(r'https?://\S+', '', result)
+                    result = _re_chk.sub(r'<a\s+href=[^>]+>.*?</a>', '', result, flags=_re_chk.DOTALL)
+                    result = _re_chk.sub(r'@[A-Za-z0-9_]{3,}', '', result)
                     result = _cut_source_signature(result, source_signature)
                     log.info(f"  [S6] translated OK: {repr(_plain(result)[:120])}")
                     return result
@@ -1946,24 +2009,14 @@ async def _ai_process_post(raw_id: int, text: str, settings: dict, source_signat
     result = await process_text_ai(text, "on", settings, source_signature=source_signature)
     async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         if not result:
-            # Check if post has media — media-only posts are valid even with no text
-            raw = await _fetchone(db, "SELECT media_file_id, media_type, media_files_json FROM raw_posts WHERE id=?", (raw_id,))
-            has_media = raw and (raw.get("media_file_id") or raw.get("media_files_json"))
-            if has_media:
-                # Keep as pending with empty text — valid media-only post
-                await db.execute(
-                    "UPDATE processed_posts SET cleaned_text='', status='pending' WHERE raw_post_id=?",
-                    (raw_id,)
-                )
-                await db.commit()
-                log.info(f"  post raw_id={raw_id} media-only → kept as pending")
-            else:
-                await db.execute(
-                    "UPDATE processed_posts SET status='skipped' WHERE raw_post_id=?",
-                    (raw_id,)
-                )
-                await db.commit()
-                log.info(f"  post raw_id={raw_id} marked skipped (ad/empty, no media)")
+            # Text was classified as ad or fully removed — skip the post
+            # Even if it has media, don't send media-only posts when text was ad
+            await db.execute(
+                "UPDATE processed_posts SET status='skipped' WHERE raw_post_id=?",
+                (raw_id,)
+            )
+            await db.commit()
+            log.info(f"  post raw_id={raw_id} marked skipped (ad/empty text removed)")
             return
         await db.execute(
             "UPDATE processed_posts SET cleaned_text=?, status='pending' WHERE raw_post_id=?",
@@ -2411,7 +2464,14 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             log.info(f"  queue full ({already_in_q}/{QUEUE_MAX}), skip collect")
             return added
         media_only = settings.get("media_only", False)
+        text_only = settings.get("text_only", False)
         candidates = []
+        # Build set of all message IDs that belong to albums for fast lookup
+        album_msg_ids: set = set()
+        for gid, grp in albums.items():
+            for m in grp:
+                album_msg_ids.add(m.id)
+
         for msg in reversed(messages):
             try:
                 has_text = bool((getattr(msg, "text", None) or "").strip())
@@ -2421,14 +2481,21 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 # media_only filter: skip text-only posts
                 if media_only and not has_media:
                     continue
+                # text_only filter: skip posts with media
+                if text_only and has_media:
+                    continue
+                # Skip album members — they are handled when we encounter the group
                 if msg.grouped_id and msg.grouped_id in processed_groups:
                     continue
                 if msg.id in parsed_ids:
+                    # If this is an album member, mark group as processed
+                    if msg.grouped_id:
+                        processed_groups.add(msg.grouped_id)
                     continue
                 if len(candidates) >= slots_left:
                     break
                 text = ""
-                if msg.grouped_id and msg.grouped_id not in processed_groups:
+                if msg.grouped_id:
                     processed_groups.add(msg.grouped_id)
                     album_msgs = sorted(albums.get(msg.grouped_id, [msg]), key=lambda m: m.id)
                     for am in album_msgs:
@@ -2437,7 +2504,8 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                     if text and contains_blacklisted(text, blacklist_extra):
                         continue
                     candidates.append((msg, text, True, album_msgs))
-                else:
+                elif msg.id not in album_msg_ids:
+                    # Only process as single post if it's NOT part of any album
                     text = msg_to_html(msg)
                     if text and contains_blacklisted(text, blacklist_extra):
                         log.debug(f"  skip {msg.id}: blacklisted word")
@@ -3194,12 +3262,22 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
     return added
 
 
+_parse_channel_semaphore = asyncio.Semaphore(6)  # Max 6 channels parsed concurrently
+
 async def parse_all_channels():
-    """Run parsing for all active channels."""
+    """Run parsing for all active channels (parallel with semaphore)."""
     channels = await get_all_channels()
-    for ch in channels:
-        if ch["subscription_status"] in ("active", "trial", "restricted"):
-            await parse_channel_sources(ch["id"])
+    active = [ch for ch in channels if ch["subscription_status"] in ("active", "trial", "restricted")]
+
+    async def _parse_one(ch_id):
+        async with _parse_channel_semaphore:
+            try:
+                await parse_channel_sources(ch_id)
+            except Exception as e:
+                log.error(f"parse channel {ch_id} error: {e}")
+
+    if active:
+        await asyncio.gather(*[_parse_one(ch["id"]) for ch in active], return_exceptions=True)
 
 
 # ─── PAYMENTS (CRYPTO BOT) ────────────────────────────────────────────────────
@@ -3617,6 +3695,7 @@ async def get_admin_stats() -> dict:
             "ai_model":           GROQ_MODEL if AI_PROVIDER == "groq" else
                                   OPENAI_MODEL if AI_PROVIDER == "openai" else GEMINI_MODEL,
             "crypto_mode":        "testnet" if CRYPTO_TESTNET else "live",
+            "days_running":       (date.today() - date.fromisoformat(BOT_LAUNCH_DATE)).days if BOT_LAUNCH_DATE else 0,
         }
 
 

@@ -52,7 +52,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   height:100dvh;
   padding-top:calc(var(--top) + var(--st) + 16px);
   padding-left:var(--pad);padding-right:var(--pad);
-  padding-bottom:calc(var(--nav)+40px+var(--sb))}
+  padding-bottom:calc(var(--nav)+80px+var(--sb))}
 .scr.on{display:block;animation:fu .2s ease}
 @keyframes fu{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 
@@ -61,7 +61,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   overflow-y:auto;-webkit-overflow-scrolling:touch;
   padding-top:calc(var(--top) + var(--st) + 16px);
   padding-left:var(--pad);padding-right:var(--pad);
-  padding-bottom:calc(100px+var(--sb))}
+  padding-bottom:calc(140px+var(--sb))}
 .ov.on{display:block;animation:su .25s cubic-bezier(.4,0,.2,1)}
 @keyframes su{from{opacity:0;transform:translateY(44px)}to{opacity:1;transform:none}}
 .ov-head{display:flex;align-items:center;gap:12px;margin-bottom:22px}
@@ -310,7 +310,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
 
   <!-- ADD CHANNEL MODAL -->
   <div class="modal-back" id="add-ch-modal" onclick="closeAddCh(event)">
-    <div class="modal" onclick="e=>e.stopPropagation()">
+    <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-handle"></div>
       <div style="font-size:18px;font-weight:800;margin-bottom:6px">Додати канал</div>
       <div style="font-size:14px;color:var(--mu);margin-bottom:20px;line-height:1.7">
@@ -424,7 +424,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   <div class="stit">Настройки</div>
   <div class="card" style="padding:4px 16px">
     <div class="sr tap" onclick="toggleLang()"><div class="sr-l"><div class="sr-t" id="lang-label">Язык интерфейса</div></div><span class="sr-v" id="lang-val">🇷🇺 RU →</span></div>
-    <div class="sr"><div class="sr-l"><div class="sr-t" id="notif-label">Уведомления</div></div><label class="tg"><input type="checkbox" checked><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="notif-label">Уведомления</div><div style="font-size:11px;color:var(--mu)" id="notif-hint">Пополнение баланса, рефералы</div></div><label class="tg"><input type="checkbox" checked id="notif-toggle" onchange="toggleNotif(this.checked)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="startTutorial()"><div class="sr-l"><div class="sr-t" id="tutorial-label">Обучение</div><div style="font-size:11px;color:var(--mu)" id="tutorial-hint">Как пользоваться ботом</div></div><span class="sr-v">→</span></div>
   </div>
   <div class="stit">Статистика сервісу</div>
   <div class="ss4">
@@ -447,31 +448,39 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div id="ov-chs-av" class="ch-av" style="width:38px;height:38px;font-size:18px;border-radius:50%"></div>
     <div class="ov-ttl" id="ov-chs-t">Настройки</div>
   </div>
-  <div class="stit" style="margin-top:0">Автопостинг</div>
+  <div class="stit" style="margin-top:0" id="chs-stit-ap">Автопостинг</div>
   <div class="card" style="padding:4px 16px">
-    <div class="sr"><div class="sr-l"><div class="sr-t">Автопостинг</div><div class="sr-s">Увімкнути публікацію</div></div><label class="tg"><input type="checkbox" id="s-ap" onchange="onTgl('autopost_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
-    <div class="sr"><div class="sr-l"><div class="sr-t">AI переробка</div><div class="sr-s">Перефразування текстів</div></div><label class="tg"><input type="checkbox" id="s-ai" onchange="onTgl('_ai',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
-    <div class="sr"><div class="sr-l"><div class="sr-t">Тільки з медіа</div><div class="sr-s">Збирати пости лише з фото/відео</div></div><label class="tg"><input type="checkbox" id="s-mo" onchange="onTgl('media_only',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
-    <div class="sr tap" onclick="prmpt('autopost_from','Початок (09:00)','sf')"><div class="sr-l"><div class="sr-t">Початок</div></div><span class="sr-v" id="sf">—</span></div>
-    <div class="sr tap" onclick="prmpt('autopost_to','Кінець (22:00)','st')"><div class="sr-l"><div class="sr-t">Кінець</div></div><span class="sr-v" id="st">—</span></div>
-    <div class="sr tap" onclick="prmpt('autopost_ppd','Постів на день (1–24)','sp')"><div class="sr-l"><div class="sr-t">Постів на день</div></div><span class="sr-v" id="sp">—</span></div>
-    <div class="sr tap" onclick="prmpt('channel_lang','Мова (off/ru/uk/en)','sl')"><div class="sr-l"><div class="sr-t">Мова постів</div></div><span class="sr-v" id="sl">—</span></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ap-t">Автопостинг</div><div class="sr-s" id="chs-ap-d">Включить публикацию</div></div><label class="tg"><input type="checkbox" id="s-ap" onchange="onTgl('autopost_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ai-t">AI переработка</div><div class="sr-s" id="chs-ai-d">Перефразирование текстов</div></div><label class="tg"><input type="checkbox" id="s-ai" onchange="onTgl('_ai',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-mo-t">Только с медиа</div><div class="sr-s" id="chs-mo-d">Собирать посты только с фото/видео</div></div><label class="tg"><input type="checkbox" id="s-mo" onchange="onTgl('media_only',this);if(this.checked)document.getElementById('s-to').checked=false,CUR_S.text_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to-t">Только текст</div><div class="sr-s" id="chs-to-d">Собирать посты только с текстом (без медиа)</div></div><label class="tg"><input type="checkbox" id="s-to" onchange="onTgl('text_only',this);if(this.checked)document.getElementById('s-mo').checked=false,CUR_S.media_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="prmpt('autopost_from',t('time_from')+' (09:00)','sf')"><div class="sr-l"><div class="sr-t" id="chs-from-t">Начало</div></div><span class="sr-v" id="sf">—</span></div>
+    <div class="sr tap" onclick="prmpt('autopost_to',t('time_to')+' (22:00)','st')"><div class="sr-l"><div class="sr-t" id="chs-to2-t">Конец</div></div><span class="sr-v" id="st">—</span></div>
+    <div class="sr tap" onclick="prmpt('autopost_ppd',t('posts_per_day')+' (1–24)','sp')"><div class="sr-l"><div class="sr-t" id="chs-ppd-t">Постов в день</div></div><span class="sr-v" id="sp">—</span></div>
+    <div class="sr tap" onclick="prmpt('channel_lang',t('post_lang')+' (off/ru/uk/en)','sl')"><div class="sr-l"><div class="sr-t" id="chs-lang-t">Язык постов</div></div><span class="sr-v" id="sl">—</span></div>
   </div>
-  <div class="stit">Підписка</div>
+  <div class="stit" id="chs-stit-filter">Фильтры контента</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-fv-t">Насилие</div><div class="sr-s" id="chs-fv-d">Убирать посты с насилием</div></div><label class="tg"><input type="checkbox" id="s-fv" onchange="onTgl('filter_violence',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-fs-t">18+ контент</div><div class="sr-s" id="chs-fs-d">Убирать контент сексуального характера</div></div><label class="tg"><input type="checkbox" id="s-fs" onchange="onTgl('filter_sexual',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-fg-t">Азартные игры</div><div class="sr-s" id="chs-fg-d">Убирать казино, ставки, гемблинг</div></div><label class="tg"><input type="checkbox" id="s-fg" onchange="onTgl('filter_gambling',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-fd-t">Наркотики</div><div class="sr-s" id="chs-fd-d">Убирать контент про наркотики</div></div><label class="tg"><input type="checkbox" id="s-fd" onchange="onTgl('filter_drugs',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+  </div>
+  <div class="stit" id="chs-stit-sub">Подписка</div>
   <div class="card" style="padding:4px 16px">
     <div class="sr">
       <div class="sr-l">
-        <div class="sr-t">🔄 Автопродовження підписки</div>
-        <div class="sr-s" style="font-size:10px;color:var(--mu);line-height:1.4;margin-top:3px">За 1 год до закінчення автоматично списує $<span id="s-price">2</span> з балансу і продовжує підписку на 30 днів. Якщо коштів немає — надійде сповіщення.</div>
+        <div class="sr-t" id="chs-ar-t">Автопродление подписки</div>
+        <div class="sr-s" style="font-size:10px;color:var(--mu);line-height:1.4;margin-top:3px" id="chs-ar-d">За 1 час до окончания автоматически списывает $<span id="s-price">2</span> с баланса и продлевает подписку на 30 дней.</div>
       </div>
       <label class="tg"><input type="checkbox" id="s-ar" onchange="onTgl('autorenew_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label>
     </div>
   </div>
-  <div class="stit">Посилання в кінці поста</div>
+  <div class="stit" id="chs-stit-btn">Ссылка в конце поста</div>
   <div class="card" style="padding:4px 16px">
-    <div class="sr"><div class="sr-l"><div class="sr-t">Увімкнути</div></div><label class="tg"><input type="checkbox" id="s-pb" onchange="onTgl('postbtn_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
-    <div class="sr tap" onclick="prmpt('postbtn_label','Текст ссылки','spbl')"><div class="sr-l"><div class="sr-t">Текст</div></div><span class="sr-v" id="spbl">—</span></div>
-    <div class="sr tap" onclick="prmpt('postbtn_url','URL (https://...)','spbu')"><div class="sr-l"><div class="sr-t">URL</div></div><span class="sr-v" id="spbu">—</span></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-pb-t">Включить</div></div><label class="tg"><input type="checkbox" id="s-pb" onchange="onTgl('postbtn_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="prmpt('postbtn_label',t('postbtn_text'),'spbl')"><div class="sr-l"><div class="sr-t" id="chs-pbl-t">Текст</div></div><span class="sr-v" id="spbl">—</span></div>
+    <div class="sr tap" onclick="prmpt('postbtn_url','URL (https://...)','spbu')"><div class="sr-l"><div class="sr-t" id="chs-pbu-t">URL</div></div><span class="sr-v" id="spbu">—</span></div>
   </div>
   <div style="height:18px"></div>
   <button class="btn bp" id="save-btn" onclick="saveSettings()">Сохранить</button>
@@ -584,7 +593,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
 
 <!-- ═══ PAYMENT MODAL ═══ -->
 <div class="modal-back" id="pay-modal" onclick="closePayModal(event)">
-  <div class="modal" onclick="e=>e.stopPropagation()">
+  <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
     <!-- Insufficient funds banner (shown when redirected from channel) -->
     <div id="pay-insuf-banner" style="display:none;background:rgba(240,90,90,.1);border:1px solid rgba(240,90,90,.35);border-radius:14px;padding:14px 16px;margin-bottom:16px">
@@ -599,10 +608,9 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
           Оплата через <b style="color:var(--tx)">@CryptoBot</b>. Безпечно, швидко, без комісій.
         </div>
         <div style="margin-bottom:16px">
-            <div style="font-size:13px;color:var(--mu);margin-bottom:10px;font-weight:600">Сума поповнення (USDT)</div>
-            <input class="inp" id="pay-amount" type="number" step="1" min="1" value="2" placeholder="Введіть суму" style="font-size:28px;font-weight:800;padding:18px 20px;text-align:center;letter-spacing:1px">
-            <div style="font-size:11px;color:var(--mu);margin-top:8px;text-align:center">Мінімум $1 · Зарахування миттєво</div>
-          </div>
+          <div style="font-size:13px;color:var(--mu);margin-bottom:10px;font-weight:600">Сума поповнення (USDT)</div>
+          <input class="inp" id="pay-amount" type="number" step="1" min="1" value="2" placeholder="Введіть суму" style="font-size:28px;font-weight:800;padding:18px 20px;text-align:center;letter-spacing:1px">
+          <div style="font-size:11px;color:var(--mu);margin-top:8px;text-align:center">Мінімум $1 · Зарахування миттєво</div>
         </div>
         <button class="btn bp" id="pay-crypto-btn" onclick="doCryptoPay()">₿ Створити рахунок</button>
       </div>
@@ -686,9 +694,15 @@ ru:{
   ov_autopost:'Автопостинг', autopost_enable:'Автопостинг', autopost_enable_desc:'Включить публикацию',
   ai_rephrase:'AI переработка', ai_rephrase_desc:'Перефразирование текстов',
   media_only:'Только с медиа', media_only_desc:'Собирать посты только с фото/видео',
+  text_only:'Только текст', text_only_desc:'Собирать посты только с текстом (без медиа)',
+  filter_section:'Фильтры контента',
+  filter_violence:'Насилие', filter_violence_desc:'Убирать посты с насилием',
+  filter_sexual:'18+ контент', filter_sexual_desc:'Убирать контент сексуального характера',
+  filter_gambling:'Азартные игры', filter_gambling_desc:'Убирать казино, ставки, гемблинг',
+  filter_drugs:'Наркотики', filter_drugs_desc:'Убирать контент про наркотики',
   time_from:'Начало', time_to:'Конец', posts_per_day:'Постов в день', post_lang:'Язык постов',
-  sub_section:'Подписка', autorenew_setting:'🔄 Автопродление подписки',
-  autorenew_setting_desc:'За 1 час до окончания автоматически списывает $<span id="s-price">2</span> с баланса и продлевает подписку на 30 дней. Если средств нет — придёт уведомление.',
+  sub_section:'Подписка', autorenew_setting:'Автопродление подписки',
+  autorenew_setting_desc:'За 1 час до окончания автоматически списывает $<span id="s-price">2</span> с баланса и продлевает подписку на 30 дней.',
   postbtn_section:'Ссылка в конце поста', postbtn_enable:'Включить',
   postbtn_text:'Текст', postbtn_url:'URL', save:'Сохранить', saving:'Сохраняю...',
   saved:'✅ Сохранено',
@@ -745,6 +759,15 @@ ru:{
   // Settings page
   my_stats:'Мои показатели', published_stat:'Опубликовано',
   channels_stat:'Каналов', referrals_stat:'Рефералов', days_stat:'Дней',
+  notif_label:'Уведомления', notif_hint:'Пополнение баланса, рефералы',
+  tutorial_label:'Обучение', tutorial_hint:'Как пользоваться ботом',
+  tut_welcome_title:'Добро пожаловать!', tut_welcome_desc:'Это бот для автоматического постинга в Telegram-каналы. Давайте разберёмся, как им пользоваться.',
+  tut_add_title:'Добавьте канал', tut_add_desc:'Нажмите кнопку "+" внизу раздела "Мои каналы", чтобы добавить ваш Telegram-канал. Бот должен быть администратором канала.',
+  tut_source_title:'Добавьте источники', tut_source_desc:'Откройте настройки канала и добавьте источники — каналы, откуда будут парситься посты. Бот автоматически собирает контент.',
+  tut_queue_title:'Очередь постов', tut_queue_desc:'Спарсенные посты попадают в очередь. Вы можете просматривать, редактировать и удалять их перед публикацией.',
+  tut_auto_title:'Автопостинг', tut_auto_desc:'Бот автоматически публикует посты из очереди по расписанию. Настройте время и количество постов в день в настройках канала.',
+  tut_done_title:'Готово!', tut_done_desc:'Всё настроено. Пополните баланс, оплатите подписку и наслаждайтесь автоматическим постингом!',
+  tut_next:'Далее', tut_skip:'Пропустить', tut_start:'Начать', tut_finish:'Готово',
   settings_section:'Настройки', lang_setting:'Язык интерфейса', notifications:'Уведомления',
   service_stats:'Статистика сервиса', users_stat:'Пользователей',
   channels_srv:'Каналов', posts_srv:'Постов', days_srv:'Дней работы',
@@ -764,9 +787,9 @@ ru:{
   search_placeholder:'Поиск по ID или @username...',
   user_channels:'каналов', user_block:'🚫 Заблокировать', user_unblock:'✅ Разблокировать',
   // Subscription check
-  sub_check_title:'📢 Подпишитесь на каналы',
+  sub_check_title:'Подпишитесь на каналы',
   sub_check_desc:'Для использования бота подпишитесь на наши каналы:',
-  sub_check_btn:'✅ Проверить подписку', sub_checking:'Проверяю...',
+  sub_check_btn:'Проверить подписку', sub_checking:'Проверяю...',
   sub_check_fail:'Вы ещё не подписаны на все каналы',
   // Misc
   error_loading:'Ошибка загрузки: ', error:'Ошибка: ',
@@ -808,9 +831,15 @@ uk:{
   ov_autopost:'Автопостинг', autopost_enable:'Автопостинг', autopost_enable_desc:'Увімкнути публікацію',
   ai_rephrase:'AI переробка', ai_rephrase_desc:'Перефразування текстів',
   media_only:'Тільки з медіа', media_only_desc:'Збирати пости лише з фото/відео',
+  text_only:'Тільки текст', text_only_desc:'Збирати пости лише з текстом (без медіа)',
+  filter_section:'Фільтри контенту',
+  filter_violence:'Насильство', filter_violence_desc:'Прибирати пости з насильством',
+  filter_sexual:'18+ контент', filter_sexual_desc:'Прибирати контент сексуального характеру',
+  filter_gambling:'Азартні ігри', filter_gambling_desc:'Прибирати казино, ставки, гемблінг',
+  filter_drugs:'Наркотики', filter_drugs_desc:'Прибирати контент про наркотики',
   time_from:'Початок', time_to:'Кінець', posts_per_day:'Постів на день', post_lang:'Мова постів',
-  sub_section:'Підписка', autorenew_setting:'🔄 Автопродовження підписки',
-  autorenew_setting_desc:'За 1 год до закінчення автоматично списує $<span id="s-price">2</span> з балансу і продовжує підписку на 30 днів. Якщо коштів немає — надійде сповіщення.',
+  sub_section:'Підписка', autorenew_setting:'Автопродовження підписки',
+  autorenew_setting_desc:'За 1 год до закінчення автоматично списує $<span id="s-price">2</span> з балансу і продовжує підписку на 30 днів.',
   postbtn_section:'Посилання в кінці поста', postbtn_enable:'Увімкнути',
   postbtn_text:'Текст', postbtn_url:'URL', save:'Зберегти', saving:'Зберігаю...',
   saved:'✅ Збережено',
@@ -860,6 +889,15 @@ uk:{
   no_referrals:'Поки немає рефералів', paid:'оплачений',
   my_stats:'Мої показники', published_stat:'Опубліковано',
   channels_stat:'Каналів', referrals_stat:'Рефералів', days_stat:'Днів',
+  notif_label:'Сповіщення', notif_hint:'Поповнення балансу, реферали',
+  tutorial_label:'Навчання', tutorial_hint:'Як користуватися ботом',
+  tut_welcome_title:'Ласкаво просимо!', tut_welcome_desc:'Це бот для автоматичного постингу в Telegram-канали. Давайте розберемося, як ним користуватися.',
+  tut_add_title:'Додайте канал', tut_add_desc:'Натисніть кнопку "+" внизу розділу "Мої канали", щоб додати ваш Telegram-канал. Бот повинен бути адміністратором каналу.',
+  tut_source_title:'Додайте джерела', tut_source_desc:'Відкрийте налаштування каналу і додайте джерела — канали, звідки будуть парситися пости. Бот автоматично збирає контент.',
+  tut_queue_title:'Черга постів', tut_queue_desc:'Спарсені пости потрапляють у чергу. Ви можете переглядати, редагувати і видаляти їх перед публікацією.',
+  tut_auto_title:'Автопостинг', tut_auto_desc:'Бот автоматично публікує пости з черги за розкладом. Налаштуйте час і кількість постів на день у налаштуваннях каналу.',
+  tut_done_title:'Готово!', tut_done_desc:'Все налаштовано. Поповніть баланс, оплатіть підписку і насолоджуйтесь автоматичним постингом!',
+  tut_next:'Далі', tut_skip:'Пропустити', tut_start:'Почати', tut_finish:'Готово',
   settings_section:'Налаштування', lang_setting:'Мова інтерфейсу', notifications:'Сповіщення',
   service_stats:'Статистика сервісу', users_stat:'Користувачів',
   channels_srv:'Каналів', posts_srv:'Постів', days_srv:'Днів роботи',
@@ -877,9 +915,9 @@ uk:{
   recent_users:'Останні користувачі', all_channels_admin:'Всі канали',
   search_placeholder:'Пошук за ID або @username...',
   user_channels:'каналів', user_block:'🚫 Заблокувати', user_unblock:'✅ Розблокувати',
-  sub_check_title:'📢 Підпишіться на канали',
+  sub_check_title:'Підпишіться на канали',
   sub_check_desc:'Для використання бота підпишіться на наші канали:',
-  sub_check_btn:'✅ Перевірити підписку', sub_checking:'Перевіряю...',
+  sub_check_btn:'Перевірити підписку', sub_checking:'Перевіряю...',
   sub_check_fail:'Ви ще не підписані на всі канали',
   error_loading:'Помилка завантаження: ', error:'Помилка: ',
   confirm_delete:'Видалити', parsing_launched:'🔄 Парсинг запущено! Пости з\'являться за ~1 хв',
@@ -922,6 +960,9 @@ async function init(){
     // Set language from user profile
     if(ME.language && (ME.language==='uk'||ME.language==='ru')) LANG=ME.language;
     applyLang();
+    // Set notification toggle from user profile (default: on)
+    var _nt=document.getElementById('notif-toggle');
+    if(_nt && ME.notifications!==undefined) _nt.checked=ME.notifications!==false;
     if(u?.photo_url){
       document.getElementById('tb-av').innerHTML=`<img src="${u.photo_url}" onerror="this.parentNode.innerHTML='<span>👤</span>'">`;
       document.getElementById('me-av').innerHTML=`<img src="${u.photo_url}" style="width:100%;height:100%;object-fit:cover">`;
@@ -933,6 +974,7 @@ async function init(){
     await checkRequiredSubs();
     await loadChannels();
     fillPaySelect();
+    maybeShowTutorial();
   }catch(e){toast(t('error_loading')+e.message)}
 }
 
@@ -947,15 +989,15 @@ async function checkRequiredSubs(){
 }
 function showSubCheckModal(channels){
   let html='<div class="modal-handle"></div>';
-  html+='<div style="text-align:center;margin-bottom:16px"><div style="font-size:48px;margin-bottom:12px">📢</div>';
+  html+='<div style="text-align:center;margin-bottom:16px">';
   html+='<div style="font-size:18px;font-weight:800;margin-bottom:8px">'+t('sub_check_title')+'</div>';
   html+='<div style="font-size:13px;color:var(--mu);line-height:1.6">'+t('sub_check_desc')+'</div></div>';
   channels.forEach(ch=>{
-    html+='<div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--bor)">';
-    html+='<div style="width:42px;height:42px;background:var(--sur2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📢</div>';
+    html+='<a href="javascript:void(0)" onclick="openChLink(\''+ch.url+'\')" style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--bor);text-decoration:none;color:inherit">';
+    html+='<div style="width:42px;height:42px;background:var(--sur2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;color:var(--acc)">TG</div>';
     html+='<div style="flex:1"><div style="font-size:14px;font-weight:700">'+ch.name+'</div></div>';
-    html+='<button class="btn bp" style="padding:8px 16px;font-size:12px;width:auto" onclick="openChLink(\''+ch.url+'\')">→</button>';
-    html+='</div>';
+    html+='<div style="padding:8px 16px;font-size:18px;color:var(--acc)">→</div>';
+    html+='</a>';
   });
   html+='<button class="btn bp" style="width:100%;margin-top:18px;padding:14px" id="sub-check-btn" onclick="recheckSubs()">'+t('sub_check_btn')+'</button>';
   const modal=document.createElement('div');
@@ -980,6 +1022,87 @@ async function recheckSubs(){
   }catch(e){if(btn){btn.textContent=t('sub_check_btn');btn.disabled=false;}}
 }
 
+// ── ONBOARDING TUTORIAL ─────────────────────────────────────────────────────
+var TUT_STEP=0;
+var TUT_STEPS=[
+  {title:'tut_welcome_title',desc:'tut_welcome_desc',
+   mockup:'<div style="background:linear-gradient(135deg,#3d8ef0,#7c5af0);border-radius:20px;padding:32px;text-align:center;color:#fff"><div style="font-size:36px;margin-bottom:12px;animation:tutPulse 2s ease infinite">AutoPost</div><div style="font-size:13px;opacity:.8">Telegram Bot</div></div>'},
+  {title:'tut_add_title',desc:'tut_add_desc',
+   mockup:'<div style="background:var(--sur);border-radius:18px;padding:16px;border:1px solid var(--bor)"><div style="font-size:13px;color:var(--mu);text-align:center;padding:16px 0">'+(_I.ru.no_channels||'Каналов пока нет')+'</div><div style="position:relative;display:flex;justify-content:center;margin-top:8px"><div style="background:var(--acc);color:#fff;border-radius:50%;width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-size:24px;animation:tutBounce 1.5s ease infinite;box-shadow:0 4px 20px rgba(61,142,240,.4)">+</div><div style="position:absolute;top:-8px;right:20%;animation:tutPoint 1.5s ease infinite">&#8593;</div></div></div>'},
+  {title:'tut_source_title',desc:'tut_source_desc',
+   mockup:'<div style="background:var(--sur);border-radius:18px;padding:16px;border:1px solid var(--bor)"><div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)"><div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#2dd4a0,#1a8a6b)"></div><div><div style="font-size:13px;font-weight:700">@channel_name</div><div style="font-size:10px;color:var(--mu)">Source</div></div></div><div style="display:flex;gap:8px;margin-top:12px"><div style="flex:1;background:var(--sur2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--mu)">@username</div><div style="background:var(--acc);color:#fff;border-radius:10px;padding:10px 14px;font-size:12px;font-weight:700;animation:tutBounce 1.5s ease infinite">+</div></div></div>'},
+  {title:'tut_queue_title',desc:'tut_queue_desc',
+   mockup:'<div style="background:var(--sur);border-radius:18px;padding:16px;border:1px solid var(--bor)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-size:14px;font-weight:700">3/5</div><div style="flex:1;background:var(--sur2);border-radius:6px;height:8px"><div style="width:60%;height:100%;background:var(--acc);border-radius:6px;animation:tutGrow 2s ease infinite"></div></div></div><div style="display:flex;gap:8px"><div style="width:60px;height:60px;background:var(--sur2);border-radius:10px"></div><div style="flex:1"><div style="height:10px;background:var(--sur2);border-radius:4px;width:80%;margin-bottom:6px"></div><div style="height:10px;background:var(--sur2);border-radius:4px;width:50%"></div></div></div></div>'},
+  {title:'tut_auto_title',desc:'tut_auto_desc',
+   mockup:'<div style="background:var(--sur);border-radius:18px;padding:16px;border:1px solid var(--bor)"><div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bor)"><div><div style="font-size:13px;font-weight:700">09:00 — 22:00</div><div style="font-size:10px;color:var(--mu)">3 / day</div></div><div style="width:42px;height:24px;background:var(--acc);border-radius:12px;position:relative"><div style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:4px;left:22px;transition:.2s"></div></div></div><div style="display:flex;gap:6px;margin-top:12px;justify-content:center"><div style="font-size:24px;animation:tutPulse 2s ease infinite">09:00</div><div style="font-size:24px;color:var(--mu)">→</div><div style="font-size:24px">22:00</div></div></div>'},
+  {title:'tut_done_title',desc:'tut_done_desc',
+   mockup:'<div style="text-align:center;padding:24px"><div style="font-size:64px;animation:tutPulse 1.5s ease infinite;margin-bottom:12px">&#10003;</div><div style="display:flex;justify-content:center;gap:12px"><div style="width:48px;height:48px;background:var(--acc);border-radius:14px;display:flex;align-items:center;justify-content:center;animation:tutSlideUp .5s ease .1s both">$</div><div style="width:48px;height:48px;background:var(--grn);border-radius:14px;display:flex;align-items:center;justify-content:center;animation:tutSlideUp .5s ease .3s both">&#9654;</div><div style="width:48px;height:48px;background:#f5c842;border-radius:14px;display:flex;align-items:center;justify-content:center;animation:tutSlideUp .5s ease .5s both">&#9733;</div></div></div>'}
+];
+
+function startTutorial(){
+  TUT_STEP=0;
+  renderTutorial();
+}
+
+function renderTutorial(){
+  var old=document.getElementById('tut-overlay');if(old)old.remove();
+  var s=TUT_STEPS[TUT_STEP];
+  var isLast=TUT_STEP===TUT_STEPS.length-1;
+  var dots='';
+  for(var i=0;i<TUT_STEPS.length;i++){
+    dots+='<div style="width:'+(i===TUT_STEP?'24px':'8px')+';height:8px;border-radius:4px;background:'+(i===TUT_STEP?'var(--acc)':'rgba(255,255,255,.15)')+';transition:.3s"></div>';
+  }
+  var html='';
+  // Skip button in top-right corner
+  if(!isLast){
+    html+='<div style="position:absolute;top:16px;right:16px;z-index:10"><button style="background:none;border:none;color:var(--mu);font-size:14px;padding:8px 12px;cursor:pointer" onclick="closeTutorial()">'+t('tut_skip')+' ×</button></div>';
+  }
+  html+='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100%;padding:60px 24px 40px;text-align:center">';
+  // Interface mockup card
+  html+='<div class="tut-mockup" style="width:100%;max-width:300px;margin-bottom:28px;animation:tutFadeIn .5s ease">'+s.mockup+'</div>';
+  // Title
+  html+='<div style="font-size:24px;font-weight:800;margin-bottom:10px;color:var(--tx);animation:tutFadeIn .5s ease .15s both">'+t(s.title)+'</div>';
+  // Description
+  html+='<div style="font-size:14px;color:var(--mu);line-height:1.8;max-width:320px;margin-bottom:28px;animation:tutFadeIn .5s ease .3s both">'+t(s.desc)+'</div>';
+  // Dots
+  html+='<div style="display:flex;gap:6px;margin-bottom:28px">'+dots+'</div>';
+  // Button
+  html+='<div style="width:100%;max-width:300px;animation:tutFadeIn .5s ease .4s both">';
+  if(isLast){
+    html+='<button class="btn bp" style="width:100%;padding:16px;font-size:16px;font-weight:700;border-radius:16px" onclick="closeTutorial()">'+t('tut_start')+'</button>';
+  }else{
+    html+='<button class="btn bp" style="width:100%;padding:16px;font-size:16px;font-weight:700;border-radius:16px" onclick="nextTutStep()">'+t('tut_next')+' →</button>';
+  }
+  html+='</div></div>';
+  var ov=document.createElement('div');
+  ov.id='tut-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:600;background:var(--bg);overflow-y:auto';
+  ov.innerHTML='<style>@keyframes tutFadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}@keyframes tutBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes tutPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes tutPoint{0%,100%{transform:translateY(0);opacity:1}50%{transform:translateY(-10px);opacity:.5}}@keyframes tutGrow{0%{width:0}50%{width:60%}100%{width:60%}}@keyframes tutSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}</style>'+html;
+  document.body.appendChild(ov);
+}
+
+function nextTutStep(){
+  TUT_STEP++;
+  if(TUT_STEP>=TUT_STEPS.length) TUT_STEP=TUT_STEPS.length-1;
+  renderTutorial();
+}
+
+function closeTutorial(){
+  var ov=document.getElementById('tut-overlay');
+  if(ov){ov.style.animation='tutFadeIn .3s ease reverse';setTimeout(function(){ov.remove();},280);}
+  try{localStorage.setItem('tut_done','1');}catch(e){}
+}
+
+function maybeShowTutorial(){
+  try{if(localStorage.getItem('tut_done'))return;}catch(e){}
+  startTutorial();
+}
+
+// ── NOTIFICATIONS TOGGLE ────────────────────────────────────────────────────
+async function toggleNotif(on){
+  try{await api('POST','/api/set_notifications',{enabled:on});}catch(e){}
+}
+
 // ── APPLY LANGUAGE ──────────────────────────────────────────────────────────
 function applyLang(){
   // Nav labels
@@ -995,7 +1118,10 @@ function applyLang(){
   // Language switcher
   document.getElementById('lang-val').textContent=LANG==='uk'?'🇺🇦 UK →':'🇷🇺 RU →';
   document.getElementById('lang-label').textContent=t('lang_setting');
-  document.getElementById('notif-label').textContent=t('notifications');
+  document.getElementById('notif-label').textContent=t('notif_label');
+  document.getElementById('notif-hint').textContent=t('notif_hint');
+  document.getElementById('tutorial-label').textContent=t('tutorial_label');
+  document.getElementById('tutorial-hint').textContent=t('tutorial_hint');
   // Add channel button
   var _acb=document.querySelector('.add-ch');
   if(_acb){var _acd=_acb.querySelectorAll('div > div');if(_acd[2])_acd[2].textContent=t('add_channel');if(_acd[3])_acd[3].textContent=t('add_channel_desc');}
@@ -1037,9 +1163,9 @@ function applyLang(){
   if(_fbh){var _fbd=_fbh.querySelectorAll('div');if(_fbd[0])_fbd[0].textContent=t('current_balance');var _fsub=document.getElementById('fin-sub');if(_fsub&&_fsub.textContent===t('loading')||_fsub&&_fsub.textContent==='Загрузка...'||_fsub&&_fsub.textContent==='Завантаження...')_fsub.textContent=t('loading');}
   // Finance pay methods
   var _fprs=document.querySelectorAll('#s-fin .pay-row');
-  if(_fprs[0]){var _d0=_fprs[0].querySelectorAll('div > div');if(_d0[0])_d0[0].textContent=t('crypto_title');if(_d0[1])_d0[1].textContent=t('crypto_desc');}
-  if(_fprs[1]){var _d1=_fprs[1].querySelectorAll('div > div');if(_d1[0])_d1[0].textContent=t('card_title');if(_d1[1])_d1[1].textContent=t('card_desc');}
-  if(_fprs[2]){var _d2=_fprs[2].querySelectorAll('div > div');if(_d2[0])_d2[0].textContent=t('stars_title');if(_d2[1])_d2[1].textContent=t('stars_desc');}
+  if(_fprs[0]){var _c0=_fprs[0].querySelector('div[style*="flex:1"]');if(_c0){var _d0=_c0.querySelectorAll('div');if(_d0[0])_d0[0].textContent=t('crypto_title');if(_d0[1])_d0[1].textContent=t('crypto_desc');}}
+  if(_fprs[1]){var _c1=_fprs[1].querySelector('div[style*="flex:1"]');if(_c1){var _d1=_c1.querySelectorAll('div');if(_d1[0])_d1[0].textContent=t('card_title');if(_d1[1])_d1[1].textContent=t('card_desc');}}
+  if(_fprs[2]){var _c2=_fprs[2].querySelector('div[style*="flex:1"]');if(_c2){var _d2=_c2.querySelectorAll('div');if(_d2[0])_d2[0].textContent=t('stars_title');if(_d2[1])_d2[1].textContent=t('stars_desc');}}
   var _psoon=document.querySelector('.pay-soon');if(_psoon)_psoon.textContent=t('coming_soon');
   // Boost section
   var _bstits=document.querySelectorAll('#s-boost .bcard');
@@ -1069,12 +1195,7 @@ function applyLang(){
   if(_ptst[0])_ptst[0].textContent=t('auto_patterns');
   if(_ptst[1])_ptst[1].textContent=t('manual_patterns');
   var _pti=document.getElementById('pat-inp');if(_pti)_pti.placeholder=t('pattern_placeholder');
-  // Channel settings overlay labels
-  var _csst=document.querySelectorAll('#ov-chs .stit');
-  if(_csst[0])_csst[0].textContent=t('ov_autopost');
-  if(_csst[1])_csst[1].textContent=t('sub_section');
-  if(_csst[2])_csst[2].textContent=t('postbtn_section');
-  var _sb=document.getElementById('save-btn');if(_sb&&!_sb.disabled)_sb.textContent=t('save');
+  // Channel settings overlay — handled by applyCHSLang() on open
   // Payment modal
   var _pmt=document.getElementById('pay-modal-title');
   var _ib=document.getElementById('pay-insuf-banner');
@@ -1252,8 +1373,13 @@ function openCHS(id){
   document.getElementById('s-ap').checked=!!s.autopost_enabled;
   document.getElementById('s-ai').checked=s.ai_mode!=='off';
   document.getElementById('s-mo').checked=!!s.media_only;
+  document.getElementById('s-to').checked=!!s.text_only;
   document.getElementById('s-pb').checked=!!s.postbtn_enabled;
   document.getElementById('s-ar').checked=!!s.autorenew_enabled;
+  document.getElementById('s-fv').checked=!!s.filter_violence;
+  document.getElementById('s-fs').checked=!!s.filter_sexual;
+  document.getElementById('s-fg').checked=!!s.filter_gambling;
+  document.getElementById('s-fd').checked=!!s.filter_drugs;
   const priceEl=document.getElementById('s-price');
   if(priceEl) priceEl.textContent=(CFG.price_per_slot||2).toFixed(0);
   ['sf','st','sp','sl','spbl','spbu'].forEach((el,i)=>{
@@ -1261,7 +1387,40 @@ function openCHS(id){
     document.getElementById(el).textContent=s[keys[i]]||'—';
   });
   CUR_S={...s};
+  applyCHSLang();
   openOv('ov-chs');
+}
+function applyCHSLang(){
+  document.getElementById('chs-stit-ap').textContent=t('ov_autopost');
+  document.getElementById('chs-ap-t').textContent=t('autopost_enable');
+  document.getElementById('chs-ap-d').textContent=t('autopost_enable_desc');
+  document.getElementById('chs-ai-t').textContent=t('ai_rephrase');
+  document.getElementById('chs-ai-d').textContent=t('ai_rephrase_desc');
+  document.getElementById('chs-mo-t').textContent=t('media_only');
+  document.getElementById('chs-mo-d').textContent=t('media_only_desc');
+  document.getElementById('chs-to-t').textContent=t('text_only');
+  document.getElementById('chs-to-d').textContent=t('text_only_desc');
+  document.getElementById('chs-from-t').textContent=t('time_from');
+  document.getElementById('chs-to2-t').textContent=t('time_to');
+  document.getElementById('chs-ppd-t').textContent=t('posts_per_day');
+  document.getElementById('chs-lang-t').textContent=t('post_lang');
+  document.getElementById('chs-stit-filter').textContent=t('filter_section');
+  document.getElementById('chs-fv-t').textContent=t('filter_violence');
+  document.getElementById('chs-fv-d').textContent=t('filter_violence_desc');
+  document.getElementById('chs-fs-t').textContent=t('filter_sexual');
+  document.getElementById('chs-fs-d').textContent=t('filter_sexual_desc');
+  document.getElementById('chs-fg-t').textContent=t('filter_gambling');
+  document.getElementById('chs-fg-d').textContent=t('filter_gambling_desc');
+  document.getElementById('chs-fd-t').textContent=t('filter_drugs');
+  document.getElementById('chs-fd-d').textContent=t('filter_drugs_desc');
+  document.getElementById('chs-stit-sub').textContent=t('sub_section');
+  document.getElementById('chs-ar-t').textContent=t('autorenew_setting');
+  document.getElementById('chs-ar-d').innerHTML=t('autorenew_setting_desc');
+  document.getElementById('chs-stit-btn').textContent=t('postbtn_section');
+  document.getElementById('chs-pb-t').textContent=t('postbtn_enable');
+  document.getElementById('chs-pbl-t').textContent=t('postbtn_text');
+  document.getElementById('chs-pbu-t').textContent='URL';
+  var _sb=document.getElementById('save-btn');if(_sb&&!_sb.disabled)_sb.textContent=t('save');
 }
 function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR_S[k]=cb.checked}
 function prmpt(k,lbl,el){const v=prompt(lbl,CUR_S[k]||'');if(v===null)return;CUR_S[k]=v;document.getElementById(el).textContent=v||'—'}
@@ -1514,14 +1673,14 @@ function loadSetPage(){
   document.getElementById('me-name').textContent='@'+(u&&u.username?u.username:ME.telegram_id);
   document.getElementById('me-meta').textContent='ID: '+ME.telegram_id+' · с '+(ME.created_at||'').substring(0,10);
   const ss=ME.service_stats||{};
-  document.getElementById('srv-u').textContent=ss.total_users||'—';
-  document.getElementById('srv-c').textContent=ss.total_channels||'—';
-  document.getElementById('srv-p').textContent=ss.total_published>999?Math.round(ss.total_published/1000)+'K':(ss.total_published||'—');
-  document.getElementById('srv-d').textContent=ss.days_running||'—';
+  document.getElementById('srv-u').textContent=ss.total_users!=null?ss.total_users:'—';
+  document.getElementById('srv-c').textContent=ss.total_channels!=null?ss.total_channels:'—';
+  document.getElementById('srv-p').textContent=ss.total_published>999?Math.round(ss.total_published/1000)+'K':(ss.total_published!=null?ss.total_published:'—');
+  document.getElementById('srv-d').textContent=ss.days_running!=null?ss.days_running:'—';
   document.getElementById('st-ref').textContent=ME.ref_stats&&ME.ref_stats.total||0;
   document.getElementById('st-ch').textContent=CHANNELS.length;
   document.getElementById('st-pub').textContent=CHANNELS.reduce(function(a,c){return a+(c.total_published||0);},0);
-  if(ME.created_at)document.getElementById('st-days').textContent=Math.floor((Date.now()-new Date(ME.created_at))/86400000)+'д';
+  if(ME.created_at){var _daysSince=Math.floor((Date.now()-new Date(ME.created_at))/86400000);document.getElementById('st-days').textContent=Math.max(1,_daysSince)+'д';}
 }
 
 function fillPaySelect(){/* channel select removed */}
