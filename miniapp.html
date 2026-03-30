@@ -840,7 +840,7 @@ ru:{
   // Marketplace / Catalog
   catalog:'Каталог', mp_no_channels:'Каналов пока нет. Добавьте свой канал в каталог в настройках!',
   mp_paid_ads:'Платная реклама', mp_crosspromo:'Взаимопиар', mp_per_post:'за пост', mp_subs:'Подписчиков',
-  mp_contact:'Написать', mp_all:'Все', mp_monet_section:'Монетизация / Каталог',
+  mp_contact:'Связаться с представителем канала', mp_all:'Все', mp_monet_section:'Монетизация / Каталог',
   mp_show_in_catalog:'Показать в каталоге', mp_show_in_catalog_desc:'Ваш канал будет виден другим',
   mp_paid_ads_desc:'Принимаю рекламные посты', mp_crosspromo_desc:'Готов к взаимному продвижению',
   mp_price_per_post:'Цена за пост ($)', mp_contact_label:'Контакт (@ или ссылка)', mp_info_label:'Описание / доп. инфо',
@@ -984,7 +984,7 @@ uk:{
   payment_pending:'Оплата ще не отримана. Спробуй через хвилину.',
   catalog:'Каталог', mp_no_channels:'Каналів поки немає. Додайте свій канал у каталог у налаштуваннях!',
   mp_paid_ads:'Платна реклама', mp_crosspromo:'Взаємопіар', mp_per_post:'за пост', mp_subs:'Підписників',
-  mp_contact:'Написати', mp_all:'Всі', mp_monet_section:'Монетизація / Каталог',
+  mp_contact:"Зв'язатися з представником каналу", mp_all:'Всі', mp_monet_section:'Монетизація / Каталог',
   mp_show_in_catalog:'Показати в каталозі', mp_show_in_catalog_desc:'Ваш канал буде видно іншим',
   mp_paid_ads_desc:'Приймаю рекламні пости', mp_crosspromo_desc:'Готовий до взаємного просування',
   mp_price_per_post:'Ціна за пост ($)', mp_contact_label:'Контакт (@ або посилання)', mp_info_label:'Опис / доп. інфо',
@@ -2134,31 +2134,31 @@ function renderMp(list){
   list.forEach(function(ch){
     var catLabel=t('cat_'+(ch.category||'general'))||ch.category||'';
     var langLabel=ch.channel_lang?ch.channel_lang.toUpperCase():'';
-    var badges='';
-    if(ch.accept_paid_ads) badges+='<span style="background:rgba(45,212,160,.12);color:var(--grn);padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_paid_ads')+'</span> ';
-    if(ch.accept_crosspromo) badges+='<span style="background:rgba(91,163,255,.12);color:var(--acc2);padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_crosspromo')+'</span> ';
     var subs=ch.subscribers_count?_fmtNum(ch.subscribers_count):'—';
     var price=ch.price_per_post?'$'+parseFloat(ch.price_per_post).toFixed(0):'—';
     var avatarStyle='width:42px;height:42px;font-size:18px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center';
     var avatarInner=ch.photo_url?'<img src="'+_escHtml(ch.photo_url)+'" style="width:100%;height:100%;object-fit:cover" onerror="this.parentNode.textContent=\''+((ch.title||'?')[0])+'\'">':((ch.title||'?')[0]);
+    var chName=_escHtml(ch.title||(ch.username?'@'+ch.username:'—'));
     html+='<div class="card" style="padding:14px 16px;margin-bottom:10px">';
     html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">';
     html+='<div class="ch-av" style="'+avatarStyle+'">'+avatarInner+'</div>';
-    html+='<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@'+(ch.username||'—')+'</div>';
+    html+='<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+chName+'</div>';
     html+='<div style="font-size:11px;color:var(--mu);margin-top:2px">'+catLabel+(langLabel?' · '+langLabel:'')+'</div></div>';
     html+='<div style="text-align:right"><div style="font-size:16px;font-weight:800;color:var(--grn)">'+price+'</div><div style="font-size:10px;color:var(--mu)">'+t('mp_per_post')+'</div></div>';
     html+='</div>';
-    html+='<div style="display:flex;gap:12px;margin-bottom:8px">';
-    html+='<div style="font-size:12px;color:var(--mu)">'+t('mp_subs')+': <b style="color:var(--tx)">'+subs+'</b></div>';
+    // Subs + badges on same row
+    html+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px">';
+    html+='<span style="font-size:12px;color:var(--mu)">'+t('mp_subs')+': <b style="color:var(--tx)">'+subs+'</b></span>';
+    if(ch.accept_paid_ads) html+='<span style="background:rgba(45,212,160,.12);color:var(--grn);padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_paid_ads')+'</span>';
+    if(ch.accept_crosspromo) html+='<span style="background:rgba(91,163,255,.12);color:var(--acc2);padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_crosspromo')+'</span>';
     html+='</div>';
-    if(badges) html+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+badges+'</div>';
     if(ch.monetization_info) html+='<div style="font-size:12px;color:var(--mu);line-height:1.5;margin-bottom:8px">'+_escHtml(ch.monetization_info)+'</div>';
     var contact=ch.contact_username||ch.username||'';
     if(contact){
       var contactUrl;
       if(contact.match(/^https?:\/\//)) contactUrl=contact;
       else contactUrl='https://t.me/'+contact.replace('@','');
-      html+='<button class="btn" style="width:100%;padding:10px;font-size:13px;font-weight:700;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;color:var(--acc2)" onclick="openTgUrl(\''+_escHtml(contactUrl)+'\')">'+t('mp_contact')+'</button>';
+      html+='<button class="btn" style="width:100%;padding:8px;font-size:12px;font-weight:600;background:var(--sur2);border:1px solid var(--bor);border-radius:10px;color:var(--acc2)" onclick="openTgUrl(\''+_escHtml(contactUrl)+'\')">'+t('mp_contact')+'</button>';
     }
     html+='</div>';
   });

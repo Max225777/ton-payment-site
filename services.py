@@ -79,7 +79,7 @@ ADMIN_IDS: List[int] = [int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.st
 
 BOT_TOKEN            = os.getenv("BOT_TOKEN", "")
 BOT_USERNAME         = os.getenv("BOT_USERNAME", "")
-BOT_LAUNCH_DATE      = os.getenv("BOT_LAUNCH_DATE", str(date.today() - timedelta(days=1)))
+BOT_LAUNCH_DATE      = os.getenv("BOT_LAUNCH_DATE", "2026-03-29")
 BOT_OWNER_USERNAME   = os.getenv("BOT_OWNER_USERNAME", "")
 MANAGER_USERNAME     = os.getenv("MANAGER_USERNAME", "")
 # REQUIRED_CHANNELS формат: "Назва|https://t.me/username,Назва2|https://t.me/username2"
@@ -3684,19 +3684,38 @@ async def get_marketplace_channels() -> list:
             ORDER BY c.created_at DESC
         """)
     result = []
+    now_ts = datetime.now(timezone.utc).isoformat()
     for r in rows:
         s = json.loads(r.get("settings") or "{}")
         if not s.get("is_listed"):
             continue
-        # Auto-fetch subscriber count from Telegram
         subs_count = s.get("subscribers_count") or 0
         photo_url = None
         chat_id = r.get("chat_id")
-        if _bot_instance and chat_id:
+        need_refresh = False
+        last_check = s.get("subs_checked_at") or ""
+        if last_check:
             try:
-                subs_count = await _bot_instance.get_chat_member_count(chat_id)
+                elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(last_check)).total_seconds()
+                if elapsed > 86400:
+                    need_refresh = True
             except Exception:
-                pass
+                need_refresh = True
+        else:
+            need_refresh = True
+        if _bot_instance and chat_id:
+            if need_refresh:
+                try:
+                    subs_count = await _bot_instance.get_chat_member_count(chat_id)
+                    # Save to DB so we don't re-fetch for 24h
+                    s["subscribers_count"] = subs_count
+                    s["subs_checked_at"] = now_ts
+                    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+                        await db.execute("UPDATE channels SET settings=? WHERE id=?",
+                                         (json.dumps(s), r["id"]))
+                        await db.commit()
+                except Exception:
+                    pass
             try:
                 chat = await _bot_instance.get_chat(chat_id)
                 if chat.photo:
