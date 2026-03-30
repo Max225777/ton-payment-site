@@ -455,7 +455,8 @@ async def api_channel_add(request):
                 "message": f"Добавьте @{(await _bot_instance.me()).username} как администратора"}, status=400)
     except Exception as e:
         return _web.json_response({"error":"channel_error","message":str(e)}, status=400)
-    ch_id = await create_channel(user["id"], chat_id, title, username)
+    category = body.get("category", "general")
+    ch_id = await create_channel(user["id"], chat_id, title, username, category)
     trial_activated = False
     if not TRIAL_DISABLED:
         trial_activated = await activate_trial(ch_id)
@@ -843,6 +844,12 @@ async def api_pay_from_balance(request):
             (user["id"], -price, "subscription", f"Подписка @{ch.get('username') or ch_id} · {days}д"))
         await db.commit()
     await activate_subscription(int(ch_id), days)
+    # Trigger referral bonus
+    try:
+        from services import process_referral_bonus
+        await process_referral_bonus(tg_id, int(ch_id), price)
+    except Exception as e:
+        log.warning(f"referral bonus error: {e}")
     return _j({"ok":True,"new_balance":round(new_bal,2),"days":days})
 
 @_auth
@@ -1104,8 +1111,43 @@ async def api_media_thumb(request):
         log.debug(f"media_thumb {file_id[:20]}: {type(e).__name__}")
         return _web.Response(body=b"", status=204)
 
+@_auth
+async def api_marketplace(request):
+    from services import get_marketplace_channels
+    channels = await get_marketplace_channels()
+    return _j(channels)
+
+async def api_marketplace_photo(request):
+    """Public endpoint — returns channel avatar for marketplace cards."""
+    from services import _bot_instance as _mp_bot
+    import aiosqlite
+    from services import DB_PATH, _fetchone
+    ch_id = int(request.match_info["id"])
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            row = await _fetchone(db, "SELECT chat_id, settings FROM channels WHERE id=?", (ch_id,))
+        if not row:
+            return _web.json_response({"error": "not found"}, status=404)
+        import json as _json_mp
+        s = _json_mp.loads(row.get("settings") or "{}")
+        if not s.get("is_listed"):
+            return _web.json_response({"error": "not listed"}, status=403)
+        chat = await _mp_bot.get_chat(row["chat_id"])
+        if chat.photo:
+            file = await _mp_bot.get_file(chat.photo.small_file_id)
+            url = f"https://api.telegram.org/file/bot{_mp_bot.token}/{file.file_path}"
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    data = await resp.read()
+            return _web.Response(body=data, content_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=3600"})
+    except Exception as e:
+        log.warning(f"Marketplace photo error: {e}")
+    return _web.json_response({"error": "no photo"}, status=404)
+
 async def start_webapp():
     app = _web.Application(middlewares=[_cors_middleware])
+    app.router.add_get("/favicon.ico", lambda r: _web.Response(status=204))
     app.router.add_get("/",           _serve_miniapp)
     app.router.add_get("/miniapp",    _serve_miniapp)
     # API
@@ -1146,6 +1188,8 @@ async def start_webapp():
     app.router.add_get   ("/api/check_subscriptions",       api_check_subscriptions)
     app.router.add_get   ("/api/admin/channels",            api_admin_all_channels)
     app.router.add_post  ("/api/admin/user/block",          api_admin_user_block)
+    app.router.add_get   ("/api/marketplace",               api_marketplace)
+    app.router.add_get   ("/api/marketplace/photo/{id}",    api_marketplace_photo)
     runner = _web.AppRunner(app)
     await runner.setup()
     site = _web.TCPSite(runner, "0.0.0.0", 8080)

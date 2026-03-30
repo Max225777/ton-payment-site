@@ -210,6 +210,7 @@ async def init_db():
             subscription_end TEXT,
             trial_used INTEGER DEFAULT 0,
             restricted_mode INTEGER DEFAULT 0,
+            category TEXT DEFAULT 'general',
             settings TEXT DEFAULT '{}',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id)
@@ -367,6 +368,7 @@ async def init_db():
         "ALTER TABLE transactions ADD COLUMN description TEXT",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_posts_unique ON raw_posts(channel_id, source_id, tg_message_id)",
         "ALTER TABLE users ADD COLUMN notifications INTEGER DEFAULT 1",
+        "ALTER TABLE channels ADD COLUMN category TEXT DEFAULT 'general'",
         # Performance indexes for high volume (1000+ channels)
         "CREATE INDEX IF NOT EXISTS idx_pp_status ON processed_posts(status, raw_post_id)",
         "CREATE INDEX IF NOT EXISTS idx_rp_channel ON raw_posts(channel_id, source_id)",
@@ -374,6 +376,8 @@ async def init_db():
         "CREATE INDEX IF NOT EXISTS idx_src_channel ON sources(channel_id, is_active)",
         "CREATE INDEX IF NOT EXISTS idx_pp_published ON processed_posts(status, published_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_rp_grouped ON raw_posts(grouped_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ref_referrer ON referrals(referrer_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_ref_referred ON referrals(referred_id, status)",
         ]:
             try:
                 await db.execute(sql)
@@ -533,11 +537,11 @@ async def get_channel(channel_id: int) -> Optional[dict]:
         return await _fetchone(db, "SELECT * FROM channels WHERE id=?", (channel_id,))
 
 
-async def create_channel(user_id: int, chat_id: int, title: str, username: str) -> int:
+async def create_channel(user_id: int, chat_id: int, title: str, username: str, category: str = "general") -> int:
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         cur = await db.execute(
-            "INSERT INTO channels(user_id, chat_id, title, username, settings) VALUES(?,?,?,?,?)",
-            (user_id, chat_id, title, username, "{}")
+            "INSERT INTO channels(user_id, chat_id, title, username, category, settings) VALUES(?,?,?,?,?,?)",
+            (user_id, chat_id, title, username, category or "general", "{}")
         )
         await db.commit()
         ch_id = cur.lastrowid
@@ -3395,7 +3399,10 @@ async def handle_payment_webhook(invoice_id: str) -> Optional[dict]:
     # Referral bonus — only for actual channel subscriptions, not balance top-ups
     ref_info = None
     if channel_id and int(channel_id) != 0:
-        ref_info = await process_referral_bonus(user_id, int(channel_id), amount)
+        # user_id here is DB id, need telegram_id for process_referral_bonus
+        _payer = await get_user_by_id(user_id)
+        if _payer:
+            ref_info = await process_referral_bonus(_payer["telegram_id"], int(channel_id), amount)
     return {"inv": inv, "ref_info": ref_info, "user_id": user_id, "channel_id": channel_id, "amount": amount}
 
 
@@ -3618,6 +3625,12 @@ async def check_autorenew_subscriptions() -> list:
             renewed.append(ch["id"])
             log.info(f"Autorenew ch={ch['id']}: renewed 30d, balance now ${new_bal:.2f}")
 
+            # Trigger referral bonus
+            try:
+                await process_referral_bonus(tg_id, ch["id"], slot_price)
+            except Exception:
+                pass
+
             # Notify user about successful renewal
             if _bot_instance:
                 try:
@@ -3658,44 +3671,118 @@ async def get_referral_stats(telegram_id: int) -> dict:
         return {"total": total, "paid": paid_cnt, "earned": earned, "balance": balance}
 
 
+# ─── MARKETPLACE ──────────────────────────────────────────────────────────────
+
+async def get_marketplace_channels() -> list:
+    """Get all channels that opted into the marketplace catalog."""
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        rows = await _fetchall(db, """
+            SELECT c.id, c.title, c.username, c.category,
+                   c.subscription_status, c.settings, c.chat_id
+            FROM channels c
+            WHERE c.subscription_status IN ('active', 'trial')
+            ORDER BY c.created_at DESC
+        """)
+    result = []
+    for r in rows:
+        s = json.loads(r.get("settings") or "{}")
+        if not s.get("is_listed"):
+            continue
+        # Auto-fetch subscriber count from Telegram
+        subs_count = s.get("subscribers_count") or 0
+        photo_url = None
+        chat_id = r.get("chat_id")
+        if _bot_instance and chat_id:
+            try:
+                subs_count = await _bot_instance.get_chat_member_count(chat_id)
+            except Exception:
+                pass
+            try:
+                chat = await _bot_instance.get_chat(chat_id)
+                if chat.photo:
+                    photo_url = f"/api/marketplace/photo/{r['id']}"
+            except Exception:
+                pass
+        result.append({
+            "id": r["id"],
+            "title": r.get("title") or "",
+            "username": r.get("username") or "",
+            "category": r.get("category") or "general",
+            "channel_lang": s.get("channel_lang") or "",
+            "subscribers_count": subs_count,
+            "price_per_post": s.get("price_per_post") or 0,
+            "accept_paid_ads": bool(s.get("accept_paid_ads")),
+            "accept_crosspromo": bool(s.get("accept_crosspromo")),
+            "contact_username": s.get("contact_username") or "",
+            "monetization_info": s.get("monetization_info") or "",
+            "photo_url": photo_url,
+        })
+    return result
+
+
 # ─── ADMIN ────────────────────────────────────────────────────────────────────
 
 async def get_admin_stats() -> dict:
-    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-        total_users = (await _fetchone(db, "SELECT COUNT(*) as c FROM users"))["c"]
-        today = date.today().isoformat()
-        new_today = (await _fetchone(db, "SELECT COUNT(*) as c FROM users WHERE DATE(created_at)=?", (today,)))["c"]
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            total_users = (await _fetchone(db, "SELECT COUNT(*) as c FROM users"))["c"]
+            today = date.today().isoformat()
+            new_today = (await _fetchone(db, "SELECT COUNT(*) as c FROM users WHERE DATE(created_at)=?", (today,)))["c"]
 
-        total_channels = (await _fetchone(db, "SELECT COUNT(*) as c FROM channels"))["c"]
+            total_channels = (await _fetchone(db, "SELECT COUNT(*) as c FROM channels"))["c"]
 
-        statuses_rows = await _fetchall(db, "SELECT subscription_status, COUNT(*) as c FROM channels GROUP BY subscription_status")
-        channels_by_status = {r["subscription_status"]: r["c"] for r in statuses_rows}
+            statuses_rows = await _fetchall(db, "SELECT subscription_status, COUNT(*) as c FROM channels GROUP BY subscription_status")
+            channels_by_status = {r["subscription_status"]: r["c"] for r in statuses_rows}
 
-        total_published = (await _fetchone(db, "SELECT COUNT(*) as c FROM processed_posts WHERE status='published'"))["c"]
+            total_published = (await _fetchone(db, "SELECT COUNT(*) as c FROM processed_posts WHERE status='published'"))["c"]
 
-        total_revenue_row = await _fetchone(db, "SELECT COALESCE(SUM(amount),0) as s FROM transactions WHERE type='subscription'")
-        total_revenue = total_revenue_row["s"] if total_revenue_row else 0.0
+            try:
+                total_revenue_row = await _fetchone(db, "SELECT COALESCE(SUM(amount),0) as s FROM transactions WHERE type='subscription'")
+                total_revenue = total_revenue_row["s"] if total_revenue_row else 0.0
+            except Exception:
+                total_revenue = 0.0
 
-        total_referral_paid_row = await _fetchone(db, "SELECT COALESCE(SUM(bonus_amount),0) as s FROM referrals WHERE status='paid'")
-        total_referral_paid = total_referral_paid_row["s"] if total_referral_paid_row else 0.0
+            try:
+                total_referral_paid_row = await _fetchone(db, "SELECT COALESCE(SUM(bonus_amount),0) as s FROM referrals WHERE status='paid'")
+                total_referral_paid = total_referral_paid_row["s"] if total_referral_paid_row else 0.0
+            except Exception:
+                total_referral_paid = 0.0
 
-        total_ai_tokens_row = await _fetchone(db, "SELECT COALESCE(SUM(tokens_used),0) as s FROM ai_usage")
-        total_ai_tokens = total_ai_tokens_row["s"] if total_ai_tokens_row else 0
+            try:
+                total_ai_tokens_row = await _fetchone(db, "SELECT COALESCE(SUM(tokens_used),0) as s FROM ai_usage")
+                total_ai_tokens = total_ai_tokens_row["s"] if total_ai_tokens_row else 0
+            except Exception:
+                total_ai_tokens = 0
 
+            days = 0
+            try:
+                days = (date.today() - date.fromisoformat(BOT_LAUNCH_DATE)).days if BOT_LAUNCH_DATE else 0
+            except Exception:
+                days = 1
+
+            return {
+                "total_users":        total_users,
+                "new_today":          new_today,
+                "total_channels":     total_channels,
+                "channels_by_status": channels_by_status,
+                "total_published":    total_published,
+                "total_revenue":      total_revenue,
+                "total_referral_paid": total_referral_paid,
+                "total_ai_tokens":    total_ai_tokens,
+                "ai_provider":        AI_PROVIDER,
+                "ai_model":           GROQ_MODEL if AI_PROVIDER == "groq" else
+                                      OPENAI_MODEL if AI_PROVIDER == "openai" else GEMINI_MODEL,
+                "crypto_mode":        "testnet" if CRYPTO_TESTNET else "live",
+                "days_running":       days,
+            }
+    except Exception as e:
+        log.error(f"get_admin_stats failed: {e}")
         return {
-            "total_users":        total_users,
-            "new_today":          new_today,
-            "total_channels":     total_channels,
-            "channels_by_status": channels_by_status,
-            "total_published":    total_published,
-            "total_revenue":      total_revenue,
-            "total_referral_paid": total_referral_paid,
-            "total_ai_tokens":    total_ai_tokens,
-            "ai_provider":        AI_PROVIDER,
-            "ai_model":           GROQ_MODEL if AI_PROVIDER == "groq" else
-                                  OPENAI_MODEL if AI_PROVIDER == "openai" else GEMINI_MODEL,
-            "crypto_mode":        "testnet" if CRYPTO_TESTNET else "live",
-            "days_running":       (date.today() - date.fromisoformat(BOT_LAUNCH_DATE)).days if BOT_LAUNCH_DATE else 0,
+            "total_users": 0, "new_today": 0, "total_channels": 0,
+            "channels_by_status": {}, "total_published": 0,
+            "total_revenue": 0.0, "total_referral_paid": 0.0,
+            "total_ai_tokens": 0, "ai_provider": AI_PROVIDER,
+            "ai_model": "", "crypto_mode": "testnet", "days_running": 1,
         }
 
 

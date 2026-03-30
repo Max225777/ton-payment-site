@@ -327,6 +327,31 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
           Можно вставить: <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">https://t.me/channel</span>
         </div>
       </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;color:var(--mu);margin-bottom:8px;font-weight:700" id="add-ch-cat-label">Категорія каналу</div>
+        <select class="inp" id="add-ch-cat" style="font-size:15px;padding:13px 16px;appearance:auto;-webkit-appearance:auto">
+          <option value="general">Загальне</option>
+          <option value="news">Новини / Медіа</option>
+          <option value="tech">Технології / IT</option>
+          <option value="crypto">Крипто / Фінанси / Трейдинг</option>
+          <option value="entertainment">Розваги / Меми / Гумор</option>
+          <option value="education">Освіта / Наука</option>
+          <option value="business">Бізнес / Маркетинг / SMM</option>
+          <option value="lifestyle">Лайфстайл / Мода / Краса</option>
+          <option value="sport">Спорт / Фітнес</option>
+          <option value="gaming">Ігри / Кіберспорт</option>
+          <option value="music">Музика / Подкасти</option>
+          <option value="travel">Подорожі / Їжа</option>
+          <option value="auto">Авто / Мото</option>
+          <option value="realestate">Нерухомість</option>
+          <option value="health">Здоров'я / Психологія</option>
+          <option value="politics">Політика / Суспільство</option>
+          <option value="animals">Тварини</option>
+          <option value="art">Мистецтво / Дизайн / Фото</option>
+          <option value="18plus">18+</option>
+          <option value="other">Інше</option>
+        </select>
+      </div>
       <div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:14px;padding:16px;margin-bottom:18px">
         <div style="font-size:15px;font-weight:800;color:var(--grn);margin-bottom:6px">🎁 7 днів безкоштовно</div>
         <div style="font-size:13px;color:var(--mu);line-height:1.5">Перший канал — пробний період 7 днів.<br>Після — лише <b style="color:var(--tx)">$2/міс</b>.</div>
@@ -370,18 +395,73 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
 
 <!-- ══ BOOST ══ -->
 <div class="scr" id="s-boost">
-  <div class="card" style="text-align:center;padding:32px 24px;margin-bottom:16px;
-    background:linear-gradient(135deg,#1a2440,#0d1626);border-color:rgba(61,142,240,.2)">
-    <div style="font-size:48px;margin-bottom:12px">🚀</div>
-    <div style="font-size:20px;font-weight:800;margin-bottom:8px">Скоро</div>
-    <div style="font-size:13px;color:var(--mu);line-height:1.7">Функціонал просування в розробці.</div>
+  <!-- Expandable filters -->
+  <div class="card" style="padding:12px 16px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="document.getElementById('mp-filter-body').style.display=document.getElementById('mp-filter-body').style.display==='none'?'block':'none';this.querySelector('span:last-child').textContent=document.getElementById('mp-filter-body').style.display==='none'?'▼':'▲'">
+      <span style="font-size:14px;font-weight:700" id="mp-filter-title">Фільтри</span>
+      <span style="font-size:12px;color:var(--mu)">▼</span>
+    </div>
+    <div id="mp-filter-body" style="display:none;margin-top:12px">
+      <div style="font-size:12px;color:var(--mu);margin-bottom:6px;font-weight:600" id="mp-cat-label">Тематика</div>
+      <select class="inp" id="mp-cat-sel" style="font-size:13px;padding:10px 12px;margin-bottom:10px;appearance:auto;-webkit-appearance:auto" onchange="mpApplyFilters()">
+        <option value="all">Всі тематики</option>
+        <option value="news">Новини / Медіа</option>
+        <option value="tech">Технології / IT</option>
+        <option value="crypto">Крипто / Фінанси / Трейдинг</option>
+        <option value="entertainment">Розваги / Меми / Гумор</option>
+        <option value="education">Освіта / Наука</option>
+        <option value="business">Бізнес / Маркетинг / SMM</option>
+        <option value="lifestyle">Лайфстайл / Мода / Краса</option>
+        <option value="sport">Спорт / Фітнес</option>
+        <option value="gaming">Ігри / Кіберспорт</option>
+        <option value="music">Музика / Подкасти</option>
+        <option value="travel">Подорожі / Їжа</option>
+        <option value="auto">Авто / Мото</option>
+        <option value="realestate">Нерухомість</option>
+        <option value="health">Здоров'я / Психологія</option>
+        <option value="politics">Політика / Суспільство</option>
+        <option value="animals">Тварини</option>
+        <option value="art">Мистецтво / Дизайн / Фото</option>
+        <option value="18plus">18+</option>
+        <option value="other">Інше</option>
+      </select>
+      <div style="font-size:12px;color:var(--mu);margin-bottom:6px;font-weight:600" id="mp-lang-label">Мова каналу</div>
+      <select class="inp" id="mp-lang-sel" style="font-size:13px;padding:10px 12px;margin-bottom:10px;appearance:auto;-webkit-appearance:auto" onchange="mpApplyFilters()">
+        <option value="all">Всі мови</option>
+        <option value="uk">Українська</option>
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--mu);margin-bottom:4px" id="mp-subs-from-l">Підписників від</div>
+          <input class="inp" id="mp-subs-from" type="number" placeholder="0" style="font-size:13px;padding:9px 10px" onchange="mpApplyFilters()">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--mu);margin-bottom:4px" id="mp-subs-to-l">до</div>
+          <input class="inp" id="mp-subs-to" type="number" placeholder="∞" style="font-size:13px;padding:9px 10px" onchange="mpApplyFilters()">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--mu);margin-bottom:4px" id="mp-price-from-l">Ціна від ($)</div>
+          <input class="inp" id="mp-price-from" type="number" placeholder="0" style="font-size:13px;padding:9px 10px" onchange="mpApplyFilters()">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:11px;color:var(--mu);margin-bottom:4px" id="mp-price-to-l">до ($)</div>
+          <input class="inp" id="mp-price-to" type="number" placeholder="∞" style="font-size:13px;padding:9px 10px" onchange="mpApplyFilters()">
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--mu);margin-bottom:6px;font-weight:600" id="mp-sort-label">Сортування</div>
+      <select class="inp" id="mp-sort-sel" style="font-size:13px;padding:10px 12px;appearance:auto;-webkit-appearance:auto" onchange="mpApplyFilters()">
+        <option value="subs_desc">Підписників: більше → менше</option>
+        <option value="subs_asc">Підписників: менше → більше</option>
+        <option value="price_asc">Ціна: дешевше → дорожче</option>
+        <option value="price_desc">Ціна: дорожче → дешевше</option>
+      </select>
+    </div>
   </div>
-  <div class="bg2">
-    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">📣</div><div style="font-size:13px;font-weight:700">Взаимопиар</div></div>
-    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">🎯</div><div style="font-size:13px;font-weight:700">Таргет</div></div>
-    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">📊</div><div style="font-size:13px;font-weight:700">Аналитика</div></div>
-    <div class="bcard"><div style="font-size:28px;margin-bottom:8px">🤝</div><div style="font-size:13px;font-weight:700">Партнёрства</div></div>
-  </div>
+  <div id="mp-list"><div style="text-align:center;color:var(--mu);padding:40px 0;font-size:14px" id="mp-empty">Завантаження...</div></div>
 </div>
 
 <!-- ══ REFERRAL ══ -->
@@ -416,10 +496,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   </div>
   <div class="stit" style="margin-top:0">Мої показники</div>
   <div class="ss4" style="margin-bottom:18px">
-    <div class="ss4box"><div class="ss4v" id="st-pub">—</div><div class="ss4l">Опубликовано</div></div>
-    <div class="ss4box"><div class="ss4v" id="st-ch">—</div><div class="ss4l">Каналів</div></div>
-    <div class="ss4box"><div class="ss4v" id="st-ref">—</div><div class="ss4l">Рефералов</div></div>
-    <div class="ss4box"><div class="ss4v" id="st-days" style="color:var(--grn)">—</div><div class="ss4l">Дней</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-pub">—</div><div class="ss4l" id="st-pub-l">Постів опубліковано</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-ch">—</div><div class="ss4l" id="st-ch-l">Каналів підключено</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-ref">—</div><div class="ss4l" id="st-ref-l">Рефералів</div></div>
+    <div class="ss4box"><div class="ss4v" id="st-days" style="color:var(--grn)">—</div><div class="ss4l" id="st-days-l">Днів з нами</div></div>
   </div>
   <div class="stit">Настройки</div>
   <div class="card" style="padding:4px 16px">
@@ -429,10 +509,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   </div>
   <div class="stit">Статистика сервісу</div>
   <div class="ss4">
-    <div class="ss4box"><div class="ss4v" id="srv-u">—</div><div class="ss4l">Користувачів</div></div>
-    <div class="ss4box"><div class="ss4v" id="srv-c">—</div><div class="ss4l">Каналів</div></div>
-    <div class="ss4box"><div class="ss4v" id="srv-p">—</div><div class="ss4l">Постов</div></div>
-    <div class="ss4box"><div class="ss4v" id="srv-d">—</div><div class="ss4l">Дней работы</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-u">—</div><div class="ss4l" id="srv-u-l">Користувачів</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-c">—</div><div class="ss4l" id="srv-c-l">Каналів</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-p">—</div><div class="ss4l" id="srv-p-l">Постів опубліковано</div></div>
+    <div class="ss4box"><div class="ss4v" id="srv-d">—</div><div class="ss4l" id="srv-d-l">Днів роботи</div></div>
   </div>
   <div id="adm-wrap" style="display:none;margin-top:18px">
     <button class="btn by" style="width:100%;padding:13px" onclick="openOv('ov-adm');loadAdminData()">👑 Панель администратора</button>
@@ -481,6 +561,16 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-pb-t">Включить</div></div><label class="tg"><input type="checkbox" id="s-pb" onchange="onTgl('postbtn_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr tap" onclick="prmpt('postbtn_label',t('postbtn_text'),'spbl')"><div class="sr-l"><div class="sr-t" id="chs-pbl-t">Текст</div></div><span class="sr-v" id="spbl">—</span></div>
     <div class="sr tap" onclick="prmpt('postbtn_url','URL (https://...)','spbu')"><div class="sr-l"><div class="sr-t" id="chs-pbu-t">URL</div></div><span class="sr-v" id="spbu">—</span></div>
+  </div>
+  <div class="stit" id="chs-stit-monet">Монетизація / Каталог</div>
+  <div class="card" style="padding:4px 16px">
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-listed-t">Показати в каталозі</div><div class="sr-s" id="chs-listed-d">Ваш канал буде видно іншим</div></div><label class="tg"><input type="checkbox" id="s-listed" onchange="onTgl('is_listed',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-paidads-t">Платна реклама</div><div class="sr-s" id="chs-paidads-d">Приймаю рекламні пости</div></div><label class="tg"><input type="checkbox" id="s-paidads" onchange="onTgl('accept_paid_ads',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-xpromo-t">Взаємопіар</div><div class="sr-s" id="chs-xpromo-d">Готовий до взаємного просування</div></div><label class="tg"><input type="checkbox" id="s-xpromo" onchange="onTgl('accept_crosspromo',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+    <div class="sr tap" onclick="prmpt('subscribers_count',t('mp_subs_hint')+' (1000)','s-msubs')"><div class="sr-l"><div class="sr-t" id="chs-subs-t">Підписників</div></div><span class="sr-v" id="s-msubs">—</span></div>
+    <div class="sr tap" onclick="prmpt('price_per_post',t('mp_price_hint')+' (5.00)','s-mprice')"><div class="sr-l"><div class="sr-t" id="chs-price-t">Ціна за пост ($)</div></div><span class="sr-v" id="s-mprice">—</span></div>
+    <div class="sr tap" onclick="prmpt('contact_username','@username / t.me/username / https://...','s-mcont')"><div class="sr-l"><div class="sr-t" id="chs-contact-t">Контакт</div></div><span class="sr-v" id="s-mcont">—</span></div>
+    <div class="sr tap" onclick="prmpt('monetization_info',t('mp_info_hint'),'s-minfo')"><div class="sr-l"><div class="sr-t" id="chs-minfo-t">Опис / доп. інфо</div></div><span class="sr-v" id="s-minfo">—</span></div>
   </div>
   <div style="height:18px"></div>
   <button class="btn bp" id="save-btn" onclick="saveSettings()">Сохранить</button>
@@ -651,7 +741,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div class="nc-btn">☰</div><span class="nil">Канали</span>
   </div>
   <div class="ni" id="nbst" onclick="goTo('s-boost');setNav('nbst')">
-    <span class="nic">🚀</span><span class="nil">Просування</span>
+    <span class="nic">📢</span><span class="nil">Просування</span>
   </div>
   <div class="ni" id="nset" onclick="goTo('s-set');setNav('nset')">
     <span class="nic">⚙️</span><span class="nil">Профіль</span>
@@ -672,6 +762,7 @@ ru:{
   my_channels:'Мои каналы', finance:'Финансы', referrals:'Рефералы',
   promotion:'Продвижение', profile:'Профиль', channels:'Каналы',
   add_channel:'Добавить канал', add_channel_desc:'7 дней бесплатно · потом $2/мес',
+  channel_category:'Категория канала', cat_general:'Общее', cat_news:'Новости / Медиа', cat_tech:'Технологии / IT', cat_crypto:'Крипто / Финансы / Трейдинг', cat_entertainment:'Развлечения / Мемы / Юмор', cat_education:'Образование / Наука', cat_business:'Бизнес / Маркетинг / SMM', cat_lifestyle:'Лайфстайл / Мода / Красота', cat_sport:'Спорт / Фитнес', cat_gaming:'Игры / Киберспорт', cat_music:'Музыка / Подкасты', cat_travel:'Путешествия / Еда', cat_auto:'Авто / Мото', cat_realestate:'Недвижимость', cat_health:'Здоровье / Психология', cat_politics:'Политика / Общество', cat_animals:'Животные', cat_art:'Искусство / Дизайн / Фото', cat_18plus:'18+', cat_other:'Другое',
   add_bot_first:'Сначала добавьте бота', as_admin:'администратора',
   username_or_link:'Username или ссылка на канал', can_paste:'Можно вставить:',
   free_trial:'🎁 7 дней бесплатно',
@@ -746,9 +837,20 @@ ru:{
   enter_amount:'Введи сумму (минимум $1)', invoice_ok:'✅ Счёт создан!',
   payment_ok:'🎉 Оплата прошла! Баланс пополнен.',
   payment_pending:'Оплата ещё не получена. Попробуй через минуту.',
-  // Boost
-  boost_soon:'Скоро', boost_desc:'Функционал продвижения в разработке.',
-  mutual_promo:'Взаимопиар', targeting:'Таргет', analytics:'Аналитика', partnerships:'Партнёрства',
+  // Marketplace / Catalog
+  catalog:'Каталог', mp_no_channels:'Каналов пока нет. Добавьте свой канал в каталог в настройках!',
+  mp_paid_ads:'Платная реклама', mp_crosspromo:'Взаимопиар', mp_per_post:'за пост', mp_subs:'Подписчиков',
+  mp_contact:'Написать', mp_all:'Все', mp_monet_section:'Монетизация / Каталог',
+  mp_show_in_catalog:'Показать в каталоге', mp_show_in_catalog_desc:'Ваш канал будет виден другим',
+  mp_paid_ads_desc:'Принимаю рекламные посты', mp_crosspromo_desc:'Готов к взаимному продвижению',
+  mp_price_per_post:'Цена за пост ($)', mp_contact_label:'Контакт (@ или ссылка)', mp_info_label:'Описание / доп. инфо',
+  mp_subs_hint:'Количество подписчиков', mp_price_hint:'Цена за 1 рекламный пост', mp_info_hint:'Описание канала, условия размещения',
+  mp_lang:'Язык',
+  mp_filter_title:'Фильтры', mp_cat_label:'Тематика', mp_lang_label:'Язык канала',
+  mp_subs_from:'Подписчиков от', mp_subs_to:'до', mp_price_from:'Цена от ($)', mp_price_to:'до ($)',
+  mp_sort_label:'Сортировка', mp_sort_subs_desc:'Подписчиков: больше → меньше', mp_sort_subs_asc:'Подписчиков: меньше → больше',
+  mp_sort_price_asc:'Цена: дешевле → дороже', mp_sort_price_desc:'Цена: дороже → дешевле',
+  mp_all_cats:'Все тематики', mp_all_langs:'Все языки',
   // Referral
   invite_earn:'Приглашай — зарабатывай',
   ref_desc:'За каждого друга ты получаешь<br><b style="color:var(--grn);font-size:22px">50%</b> от всех его платежей<br>в течение <b style="color:var(--acc2)">3 месяцев</b> с момента регистрации.',
@@ -757,8 +859,8 @@ ru:{
   invited:'Приглашено', earned:'Заработано', my_referrals:'Мои рефералы',
   no_referrals:'Пока нет рефералов', paid:'оплачен',
   // Settings page
-  my_stats:'Мои показатели', published_stat:'Опубликовано',
-  channels_stat:'Каналов', referrals_stat:'Рефералов', days_stat:'Дней',
+  my_stats:'Мои показатели', published_stat:'Постов опубликовано',
+  channels_stat:'Каналов подключено', referrals_stat:'Рефералов', days_stat:'Дней с нами',
   notif_label:'Уведомления', notif_hint:'Пополнение баланса, рефералы',
   tutorial_label:'Обучение', tutorial_hint:'Как пользоваться ботом',
   tut_welcome_title:'Добро пожаловать!', tut_welcome_desc:'Это бот для автоматического постинга в Telegram-каналы. Давайте разберёмся, как им пользоваться.',
@@ -770,7 +872,7 @@ ru:{
   tut_next:'Далее', tut_skip:'Пропустить', tut_start:'Начать', tut_finish:'Готово',
   settings_section:'Настройки', lang_setting:'Язык интерфейса', notifications:'Уведомления',
   service_stats:'Статистика сервиса', users_stat:'Пользователей',
-  channels_srv:'Каналов', posts_srv:'Постов', days_srv:'Дней работы',
+  channels_srv:'Каналов подключено', posts_srv:'Постов опубликовано', days_srv:'Дней работы',
   admin_panel:'👑 Панель администратора',
   // Admin
   admin_title:'👑 Администратор', general_stats:'Общая статистика',
@@ -810,6 +912,7 @@ uk:{
   my_channels:'Мої канали', finance:'Фінанси', referrals:'Реферали',
   promotion:'Просування', profile:'Профіль', channels:'Канали',
   add_channel:'Додати канал', add_channel_desc:'7 днів безкоштовно · потім $2/міс',
+  channel_category:'Категорія каналу', cat_general:'Загальне', cat_news:'Новини / Медіа', cat_tech:'Технології / IT', cat_crypto:'Крипто / Фінанси / Трейдинг', cat_entertainment:'Розваги / Меми / Гумор', cat_education:'Освіта / Наука', cat_business:'Бізнес / Маркетинг / SMM', cat_lifestyle:'Лайфстайл / Мода / Краса', cat_sport:'Спорт / Фітнес', cat_gaming:'Ігри / Кіберспорт', cat_music:'Музика / Подкасти', cat_travel:'Подорожі / Їжа', cat_auto:'Авто / Мото', cat_realestate:'Нерухомість', cat_health:"Здоров'я / Психологія", cat_politics:'Політика / Суспільство', cat_animals:'Тварини', cat_art:'Мистецтво / Дизайн / Фото', cat_18plus:'18+', cat_other:'Інше',
   add_bot_first:'Спочатку додайте бота', as_admin:'адміністратора',
   username_or_link:'Username або посилання на канал', can_paste:'Можна вставити:',
   free_trial:'🎁 7 днів безкоштовно',
@@ -879,16 +982,27 @@ uk:{
   enter_amount:'Введи суму (мінімум $1)', invoice_ok:'✅ Рахунок створено!',
   payment_ok:'🎉 Оплата пройшла! Баланс поповнено.',
   payment_pending:'Оплата ще не отримана. Спробуй через хвилину.',
-  boost_soon:'Скоро', boost_desc:'Функціонал просування в розробці.',
-  mutual_promo:'Взаємопіар', targeting:'Таргет', analytics:'Аналітика', partnerships:'Партнерства',
+  catalog:'Каталог', mp_no_channels:'Каналів поки немає. Додайте свій канал у каталог у налаштуваннях!',
+  mp_paid_ads:'Платна реклама', mp_crosspromo:'Взаємопіар', mp_per_post:'за пост', mp_subs:'Підписників',
+  mp_contact:'Написати', mp_all:'Всі', mp_monet_section:'Монетизація / Каталог',
+  mp_show_in_catalog:'Показати в каталозі', mp_show_in_catalog_desc:'Ваш канал буде видно іншим',
+  mp_paid_ads_desc:'Приймаю рекламні пости', mp_crosspromo_desc:'Готовий до взаємного просування',
+  mp_price_per_post:'Ціна за пост ($)', mp_contact_label:'Контакт (@ або посилання)', mp_info_label:'Опис / доп. інфо',
+  mp_subs_hint:'Кількість підписників', mp_price_hint:'Ціна за 1 рекламний пост', mp_info_hint:'Опис каналу, умови розміщення',
+  mp_lang:'Мова',
+  mp_filter_title:'Фільтри', mp_cat_label:'Тематика', mp_lang_label:'Мова каналу',
+  mp_subs_from:'Підписників від', mp_subs_to:'до', mp_price_from:'Ціна від ($)', mp_price_to:'до ($)',
+  mp_sort_label:'Сортування', mp_sort_subs_desc:'Підписників: більше → менше', mp_sort_subs_asc:'Підписників: менше → більше',
+  mp_sort_price_asc:'Ціна: дешевше → дорожче', mp_sort_price_desc:'Ціна: дорожче → дешевше',
+  mp_all_cats:'Всі тематики', mp_all_langs:'Всі мови',
   invite_earn:'Запрошуй — заробляй',
   ref_desc:'За кожного друга ти отримуєш<br><b style="color:var(--grn);font-size:22px">50%</b> від усіх його платежів<br>протягом <b style="color:var(--acc2)">3 місяців</b> з моменту реєстрації.',
   ref_hint:'💡 Запросив друга → він оплатив підписку → ти отримуєш <b style="color:var(--grn)">50%</b> від суми. Діє 90 днів з дня реєстрації друга.',
   share_ref:'📤 Поділитися реферальним посиланням',
   invited:'Запрошено', earned:'Зароблено', my_referrals:'Мої реферали',
   no_referrals:'Поки немає рефералів', paid:'оплачений',
-  my_stats:'Мої показники', published_stat:'Опубліковано',
-  channels_stat:'Каналів', referrals_stat:'Рефералів', days_stat:'Днів',
+  my_stats:'Мої показники', published_stat:'Постів опубліковано',
+  channels_stat:'Каналів підключено', referrals_stat:'Рефералів', days_stat:'Днів з нами',
   notif_label:'Сповіщення', notif_hint:'Поповнення балансу, реферали',
   tutorial_label:'Навчання', tutorial_hint:'Як користуватися ботом',
   tut_welcome_title:'Ласкаво просимо!', tut_welcome_desc:'Це бот для автоматичного постингу в Telegram-канали. Давайте розберемося, як ним користуватися.',
@@ -900,7 +1014,7 @@ uk:{
   tut_next:'Далі', tut_skip:'Пропустити', tut_start:'Почати', tut_finish:'Готово',
   settings_section:'Налаштування', lang_setting:'Мова інтерфейсу', notifications:'Сповіщення',
   service_stats:'Статистика сервісу', users_stat:'Користувачів',
-  channels_srv:'Каналів', posts_srv:'Постів', days_srv:'Днів роботи',
+  channels_srv:'Каналів підключено', posts_srv:'Постів опубліковано', days_srv:'Днів роботи',
   admin_panel:'👑 Панель адміністратора',
   admin_title:'👑 Адміністратор', general_stats:'Загальна статистика',
   admin_users:'Користувачів', admin_channels:'Каналів', admin_posts:'Постів', admin_revenue:'Виручка',
@@ -1136,6 +1250,8 @@ function applyLang(){
     var _acmG=_acm.querySelector('div[style*="background:rgba(45,212,160"]');
     if(_acmG){var _gg=_acmG.querySelectorAll('div');if(_gg[0])_gg[0].innerHTML=t('free_trial');if(_gg[1])_gg[1].innerHTML=t('free_trial_desc');}
     var _acmB=document.getElementById('add-ch-btn');if(_acmB)_acmB.textContent=t('btn_add_channel');
+    var _catL=document.getElementById('add-ch-cat-label');if(_catL)_catL.textContent=t('channel_category');
+    var _catS=document.getElementById('add-ch-cat');if(_catS){var _opts=_catS.options;var _ck=['cat_general','cat_news','cat_tech','cat_crypto','cat_entertainment','cat_education','cat_business','cat_lifestyle','cat_sport','cat_gaming','cat_music','cat_travel','cat_auto','cat_realestate','cat_health','cat_politics','cat_animals','cat_art','cat_18plus','cat_other'];for(var _oi=0;_oi<_opts.length&&_oi<_ck.length;_oi++)_opts[_oi].textContent=t(_ck[_oi]);}
   }
   // Settings page titles
   var _stits=document.querySelectorAll('#s-set .stit');
@@ -1143,15 +1259,14 @@ function applyLang(){
   if(_stits[1])_stits[1].textContent=t('settings_section');
   if(_stits[2])_stits[2].textContent=t('service_stats');
   // Settings stat labels
-  var _ss=document.querySelectorAll('#s-set .ss4l');
-  if(_ss[0])_ss[0].textContent=t('published_stat');
-  if(_ss[1])_ss[1].textContent=t('channels_stat');
-  if(_ss[2])_ss[2].textContent=t('referrals_stat');
-  if(_ss[3])_ss[3].textContent=t('days_stat');
-  if(_ss[4])_ss[4].textContent=t('users_stat');
-  if(_ss[5])_ss[5].textContent=t('channels_srv');
-  if(_ss[6])_ss[6].textContent=t('posts_srv');
-  if(_ss[7])_ss[7].textContent=t('days_srv');
+  document.getElementById('st-pub-l').textContent=t('published_stat');
+  document.getElementById('st-ch-l').textContent=t('channels_stat');
+  document.getElementById('st-ref-l').textContent=t('referrals_stat');
+  document.getElementById('st-days-l').textContent=t('days_stat');
+  document.getElementById('srv-u-l').textContent=t('users_stat');
+  document.getElementById('srv-c-l').textContent=t('channels_srv');
+  document.getElementById('srv-p-l').textContent=t('posts_srv');
+  document.getElementById('srv-d-l').textContent=t('days_srv');
   // Admin button
   var _ab=document.querySelector('#adm-wrap .btn');if(_ab)_ab.textContent=t('admin_panel');
   // Finance section
@@ -1167,12 +1282,21 @@ function applyLang(){
   if(_fprs[1]){var _c1=_fprs[1].querySelector('div[style*="flex:1"]');if(_c1){var _d1=_c1.querySelectorAll('div');if(_d1[0])_d1[0].textContent=t('card_title');if(_d1[1])_d1[1].textContent=t('card_desc');}}
   if(_fprs[2]){var _c2=_fprs[2].querySelector('div[style*="flex:1"]');if(_c2){var _d2=_c2.querySelectorAll('div');if(_d2[0])_d2[0].textContent=t('stars_title');if(_d2[1])_d2[1].textContent=t('stars_desc');}}
   var _psoon=document.querySelector('.pay-soon');if(_psoon)_psoon.textContent=t('coming_soon');
-  // Boost section
-  var _bstits=document.querySelectorAll('#s-boost .bcard');
-  var _bkeys=['mutual_promo','targeting','analytics','partnerships'];
-  _bstits.forEach(function(b,i){var t2=b.querySelector('div:last-child');if(t2&&_bkeys[i])t2.textContent=t(_bkeys[i]);});
-  var _bsoon=document.querySelector('#s-boost div[style*="font-size:20px"]');if(_bsoon)_bsoon.textContent=t('boost_soon');
-  var _bdesc=document.querySelector('#s-boost div[style*="font-size:13px"][style*="color:var(--mu)"]');if(_bdesc)_bdesc.textContent=t('boost_desc');
+  // Marketplace filters
+  var _mft=document.getElementById('mp-filter-title');if(_mft)_mft.textContent=t('mp_filter_title');
+  var _mcl=document.getElementById('mp-cat-label');if(_mcl)_mcl.textContent=t('mp_cat_label');
+  var _mll=document.getElementById('mp-lang-label');if(_mll)_mll.textContent=t('mp_lang_label');
+  var _msfl=document.getElementById('mp-subs-from-l');if(_msfl)_msfl.textContent=t('mp_subs_from');
+  var _mstl=document.getElementById('mp-subs-to-l');if(_mstl)_mstl.textContent=t('mp_subs_to');
+  var _mpfl=document.getElementById('mp-price-from-l');if(_mpfl)_mpfl.textContent=t('mp_price_from');
+  var _mptl=document.getElementById('mp-price-to-l');if(_mptl)_mptl.textContent=t('mp_price_to');
+  var _msl=document.getElementById('mp-sort-label');if(_msl)_msl.textContent=t('mp_sort_label');
+  var _mcs=document.getElementById('mp-cat-sel');if(_mcs&&_mcs.options[0])_mcs.options[0].textContent=t('mp_all_cats');
+  var _mcsCk=['cat_news','cat_tech','cat_crypto','cat_entertainment','cat_education','cat_business','cat_lifestyle','cat_sport','cat_gaming','cat_music','cat_travel','cat_auto','cat_realestate','cat_health','cat_politics','cat_animals','cat_art','cat_18plus','cat_other'];
+  if(_mcs){for(var _mi=1;_mi<_mcs.options.length&&(_mi-1)<_mcsCk.length;_mi++)_mcs.options[_mi].textContent=t(_mcsCk[_mi-1]);}
+  var _mls=document.getElementById('mp-lang-sel');if(_mls&&_mls.options[0])_mls.options[0].textContent=t('mp_all_langs');
+  var _mss=document.getElementById('mp-sort-sel');if(_mss){if(_mss.options[0])_mss.options[0].textContent=t('mp_sort_subs_desc');if(_mss.options[1])_mss.options[1].textContent=t('mp_sort_subs_asc');if(_mss.options[2])_mss.options[2].textContent=t('mp_sort_price_asc');if(_mss.options[3])_mss.options[3].textContent=t('mp_sort_price_desc');}
+  var _mpEmpty=document.getElementById('mp-empty');if(_mpEmpty&&_mpEmpty.parentNode.children.length<=1)_mpEmpty.textContent=t('mp_no_channels');
   // Referral section
   var _rh=document.querySelector('#s-ref div[style*="font-size:20px"]');if(_rh)_rh.textContent=t('invite_earn');
   var _rd=document.querySelector('#s-ref div[style*="font-size:13px"][style*="line-height:1.7"]');if(_rd)_rd.innerHTML=t('ref_desc');
@@ -1380,10 +1504,13 @@ function openCHS(id){
   document.getElementById('s-fs').checked=!!s.filter_sexual;
   document.getElementById('s-fg').checked=!!s.filter_gambling;
   document.getElementById('s-fd').checked=!!s.filter_drugs;
+  document.getElementById('s-listed').checked=!!s.is_listed;
+  document.getElementById('s-paidads').checked=!!s.accept_paid_ads;
+  document.getElementById('s-xpromo').checked=!!s.accept_crosspromo;
   const priceEl=document.getElementById('s-price');
   if(priceEl) priceEl.textContent=(CFG.price_per_slot||2).toFixed(0);
-  ['sf','st','sp','sl','spbl','spbu'].forEach((el,i)=>{
-    const keys=['autopost_from','autopost_to','autopost_ppd','channel_lang','postbtn_label','postbtn_url'];
+  ['sf','st','sp','sl','spbl','spbu','s-msubs','s-mprice','s-mcont','s-minfo'].forEach((el,i)=>{
+    const keys=['autopost_from','autopost_to','autopost_ppd','channel_lang','postbtn_label','postbtn_url','subscribers_count','price_per_post','contact_username','monetization_info'];
     document.getElementById(el).textContent=s[keys[i]]||'—';
   });
   CUR_S={...s};
@@ -1420,6 +1547,17 @@ function applyCHSLang(){
   document.getElementById('chs-pb-t').textContent=t('postbtn_enable');
   document.getElementById('chs-pbl-t').textContent=t('postbtn_text');
   document.getElementById('chs-pbu-t').textContent='URL';
+  document.getElementById('chs-stit-monet').textContent=t('mp_monet_section');
+  document.getElementById('chs-listed-t').textContent=t('mp_show_in_catalog');
+  document.getElementById('chs-listed-d').textContent=t('mp_show_in_catalog_desc');
+  document.getElementById('chs-paidads-t').textContent=t('mp_paid_ads');
+  document.getElementById('chs-paidads-d').textContent=t('mp_paid_ads_desc');
+  document.getElementById('chs-xpromo-t').textContent=t('mp_crosspromo');
+  document.getElementById('chs-xpromo-d').textContent=t('mp_crosspromo_desc');
+  document.getElementById('chs-subs-t').textContent=t('mp_subs');
+  document.getElementById('chs-price-t').textContent=t('mp_price_per_post');
+  document.getElementById('chs-contact-t').textContent=t('mp_contact_label');
+  document.getElementById('chs-minfo-t').textContent=t('mp_info_label');
   var _sb=document.getElementById('save-btn');if(_sb&&!_sb.disabled)_sb.textContent=t('save');
 }
 function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR_S[k]=cb.checked}
@@ -1937,6 +2075,7 @@ function goTo(id,title){
   if(id==='s-fin')loadFin();
   if(id==='s-ref')loadRef();
   if(id==='s-set')loadSetPage();
+  if(id==='s-boost')loadMarketplace();
 }
 function setNav(id){
   document.querySelectorAll('.ni,.nc').forEach(function(n){n.classList.remove('on');});
@@ -1952,6 +2091,81 @@ function toast(msg,d){
   const el=document.createElement('div');el.className='toast';el.textContent=msg;
   document.body.appendChild(el);setTimeout(function(){el.remove();},d);
 }
+
+// ── MARKETPLACE / CATALOG ──────────────────────────────────────────────────
+var MP_DATA=[];
+async function loadMarketplace(){
+  try{
+    var r=await api('GET','/api/marketplace');
+    MP_DATA=r||[];
+    mpApplyFilters();
+  }catch(e){
+    document.getElementById('mp-list').innerHTML='<div style="text-align:center;color:var(--red);padding:30px">'+t('error')+e.message+'</div>';
+  }
+}
+function mpApplyFilters(){
+  var cat=document.getElementById('mp-cat-sel').value;
+  var lang=document.getElementById('mp-lang-sel').value;
+  var subsFrom=parseInt(document.getElementById('mp-subs-from').value)||0;
+  var subsTo=parseInt(document.getElementById('mp-subs-to').value)||0;
+  var priceFrom=parseFloat(document.getElementById('mp-price-from').value)||0;
+  var priceTo=parseFloat(document.getElementById('mp-price-to').value)||0;
+  var sort=document.getElementById('mp-sort-sel').value;
+  var list=MP_DATA.slice();
+  if(cat!=='all') list=list.filter(function(c){return c.category===cat;});
+  if(lang!=='all') list=list.filter(function(c){return c.channel_lang===lang;});
+  if(subsFrom>0) list=list.filter(function(c){return (c.subscribers_count||0)>=subsFrom;});
+  if(subsTo>0) list=list.filter(function(c){return (c.subscribers_count||0)<=subsTo;});
+  if(priceFrom>0) list=list.filter(function(c){return (parseFloat(c.price_per_post)||0)>=priceFrom;});
+  if(priceTo>0) list=list.filter(function(c){return (parseFloat(c.price_per_post)||0)<=priceTo;});
+  if(sort==='subs_desc') list.sort(function(a,b){return (b.subscribers_count||0)-(a.subscribers_count||0);});
+  else if(sort==='subs_asc') list.sort(function(a,b){return (a.subscribers_count||0)-(b.subscribers_count||0);});
+  else if(sort==='price_asc') list.sort(function(a,b){return (parseFloat(a.price_per_post)||0)-(parseFloat(b.price_per_post)||0);});
+  else if(sort==='price_desc') list.sort(function(a,b){return (parseFloat(b.price_per_post)||0)-(parseFloat(a.price_per_post)||0);});
+  renderMp(list);
+}
+function renderMp(list){
+  var wrap=document.getElementById('mp-list');
+  if(!list.length){
+    wrap.innerHTML='<div style="text-align:center;color:var(--mu);padding:40px 0;font-size:14px">'+t('mp_no_channels')+'</div>';
+    return;
+  }
+  var html='';
+  list.forEach(function(ch){
+    var catLabel=t('cat_'+(ch.category||'general'))||ch.category||'';
+    var langLabel=ch.channel_lang?ch.channel_lang.toUpperCase():'';
+    var badges='';
+    if(ch.accept_paid_ads) badges+='<span style="background:rgba(45,212,160,.12);color:var(--grn);padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_paid_ads')+'</span> ';
+    if(ch.accept_crosspromo) badges+='<span style="background:rgba(91,163,255,.12);color:var(--acc2);padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_crosspromo')+'</span> ';
+    var subs=ch.subscribers_count?_fmtNum(ch.subscribers_count):'—';
+    var price=ch.price_per_post?'$'+parseFloat(ch.price_per_post).toFixed(0):'—';
+    var avatarStyle='width:42px;height:42px;font-size:18px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center';
+    var avatarInner=ch.photo_url?'<img src="'+_escHtml(ch.photo_url)+'" style="width:100%;height:100%;object-fit:cover" onerror="this.parentNode.textContent=\''+((ch.title||'?')[0])+'\'">':((ch.title||'?')[0]);
+    html+='<div class="card" style="padding:14px 16px;margin-bottom:10px">';
+    html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">';
+    html+='<div class="ch-av" style="'+avatarStyle+'">'+avatarInner+'</div>';
+    html+='<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@'+(ch.username||'—')+'</div>';
+    html+='<div style="font-size:11px;color:var(--mu);margin-top:2px">'+catLabel+(langLabel?' · '+langLabel:'')+'</div></div>';
+    html+='<div style="text-align:right"><div style="font-size:16px;font-weight:800;color:var(--grn)">'+price+'</div><div style="font-size:10px;color:var(--mu)">'+t('mp_per_post')+'</div></div>';
+    html+='</div>';
+    html+='<div style="display:flex;gap:12px;margin-bottom:8px">';
+    html+='<div style="font-size:12px;color:var(--mu)">'+t('mp_subs')+': <b style="color:var(--tx)">'+subs+'</b></div>';
+    html+='</div>';
+    if(badges) html+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+badges+'</div>';
+    if(ch.monetization_info) html+='<div style="font-size:12px;color:var(--mu);line-height:1.5;margin-bottom:8px">'+_escHtml(ch.monetization_info)+'</div>';
+    var contact=ch.contact_username||ch.username||'';
+    if(contact){
+      var contactUrl;
+      if(contact.match(/^https?:\/\//)) contactUrl=contact;
+      else contactUrl='https://t.me/'+contact.replace('@','');
+      html+='<button class="btn" style="width:100%;padding:10px;font-size:13px;font-weight:700;background:var(--sur2);border:1px solid var(--bor);border-radius:12px;color:var(--acc2)" onclick="openTgUrl(\''+_escHtml(contactUrl)+'\')">'+t('mp_contact')+'</button>';
+    }
+    html+='</div>';
+  });
+  wrap.innerHTML=html;
+}
+function _fmtNum(n){if(n>=1000000)return (n/1000000).toFixed(1)+'M';if(n>=1000)return (n/1000).toFixed(n>=10000?0:1)+'K';return n.toString();}
+function _escHtml(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
 // ── VIDEO OVERLAY ──────────────────────────────────────────────────────────
 
@@ -1981,7 +2195,8 @@ async function doAddChannel(){
   const btn=document.getElementById('add-ch-btn');
   btn.textContent=t('adding');btn.disabled=true;errEl.style.display='none';
   try{
-    const r=await api('POST','/api/channel/add',{username:username});
+    const category=document.getElementById('add-ch-cat').value||'general';
+    const r=await api('POST','/api/channel/add',{username:username,category:category});
     document.getElementById('add-ch-modal').classList.remove('on');
     toast(r.trial?t('trial_added',{days:r.trial_days}):t('channel_added',{username:r.username}));
     await loadChannels();
