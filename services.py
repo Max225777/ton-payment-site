@@ -3507,7 +3507,7 @@ async def process_referral_bonus(referred_tg_id: int, channel_id: int, amount: f
         if ref_created_at:
             try:
                 reg_dt = datetime.fromisoformat(str(ref_created_at))
-                elapsed_days = (datetime.utcnow() - reg_dt).days
+                elapsed_days = (datetime.now(timezone.utc).replace(tzinfo=None) - reg_dt).days
                 if elapsed_days > 90:
                     log.info(f"Referral bonus skipped: 3-month window expired ({elapsed_days}d) for referred={referred_tg_id}")
                     return None
@@ -3568,7 +3568,7 @@ async def check_autorenew_subscriptions() -> list:
     import os as _os
     slot_price = float(_os.getenv("SLOT_PRICE", "2.0"))
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    cutoff = (now + timedelta(hours=1)).isoformat()
+    cutoff = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
 
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         rows = await _fetchall(db, """
