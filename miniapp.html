@@ -1374,7 +1374,7 @@ async function loadChannels(){
     fillPaySelect();
   }catch(e){
     console.error('channels error:',e);
-    document.getElementById('ch-list').innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">'+t('error_loading')+e.message+'</div>';
+    document.getElementById('ch-list').innerHTML='<div style="text-align:center;padding:30px;color:var(--red);font-size:13px">'+t('error_loading')+_escHtml(e.message)+'</div>';
   }
 }
 
@@ -1662,8 +1662,8 @@ function renderQ(){
     }
     d.innerHTML='';
     if(thumbHtml){var _th=document.createElement('div');_th.innerHTML=thumbHtml;d.appendChild(_th.firstChild||_th);}
-    var _qm=document.createElement('div');_qm.className='q-media';_qm.innerHTML=miLabel+(p.source?' · <b>@'+p.source+'</b>':'');d.appendChild(_qm);
-    var _qt=document.createElement('div');_qt.className='q-text';_qt.innerHTML=(p.text||'<i style="color:var(--mu)">'+t('media_only_label')+'</i>');d.appendChild(_qt);
+    var _qm=document.createElement('div');_qm.className='q-media';_qm.innerHTML=miLabel+(p.source?' · <b>@'+_escHtml(p.source)+'</b>':'');d.appendChild(_qm);
+    var _qt=document.createElement('div');_qt.className='q-text';if(p.text){_qt.textContent=p.text;}else{_qt.innerHTML='<i style="color:var(--mu)">'+t('media_only_label')+'</i>';}d.appendChild(_qt);
     if(Q_POSTBTN&&Q_POSTBTN.url){var _pb=document.createElement('span');_pb.style.cssText='display:block;margin-top:8px;font-size:13px';var _pba=document.createElement('a');_pba.href=Q_POSTBTN.url;_pba.style.cssText='color:var(--acc2);font-weight:700;text-decoration:none';_pba.textContent=(Q_POSTBTN.label||Q_POSTBTN.url);_pba.onclick=function(e){e.preventDefault();if(window.Telegram&&window.Telegram.WebApp)Telegram.WebApp.openLink(Q_POSTBTN.url);};_pb.appendChild(_pba);d.appendChild(_pb);}
     var _qa=document.createElement('div');_qa.className='q-actions';_qa.innerHTML='<button class="q-btn q-ok" onclick="qAct('+p.id+',\'publish\',this)">'+t('publish')+'</button><button class="q-btn q-sk" onclick="qAct('+p.id+',\'skip\',this)">'+t('skip')+'</button>';d.appendChild(_qa);
     wrap.appendChild(d);
@@ -1747,9 +1747,9 @@ async function openPat(srcId,name){
     const src=srcs.find(function(s){return s.id===srcId;});if(!src)return;
     const aEl=document.getElementById('auto-pats'),mEl=document.getElementById('man-pats');
     const autos=(src.patterns||[]).filter(function(p){return p.auto;}),mans=(src.patterns||[]).filter(function(p){return !p.auto;});
-    aEl.innerHTML=autos.length?autos.map(function(p){return '<div class="pat-tag pat-auto">'+p.pattern+'</div>';}).join(''):'<span style="font-size:12px;color:var(--mu)">'+t('not_found_yet')+'</span>';
-    mEl.innerHTML=mans.length?mans.map(function(p){return '<div class="pat-tag">'+p.pattern+' <span class="pat-rm" onclick="delPat('+p.id+',this)">×</span></div>';}).join(''):'';
-  }catch(e){toast(t('error')+e.message)}
+    aEl.innerHTML=autos.length?autos.map(function(p){return '<div class="pat-tag pat-auto">'+_escHtml(p.pattern)+'</div>';}).join(''):'<span style="font-size:12px;color:var(--mu)">'+t('not_found_yet')+'</span>';
+    mEl.innerHTML=mans.length?mans.map(function(p){return '<div class="pat-tag">'+_escHtml(p.pattern)+' <span class="pat-rm" onclick="delPat('+p.id+',this)">×</span></div>';}).join(''):'';
+  }catch(e){toast(t('error')+_escHtml(e.message))}
 }
 
 async function addPat(){
@@ -1758,7 +1758,7 @@ async function addPat(){
     const r=await api('POST','/api/source/'+CUR_SRC+'/patterns',{pattern:pat});
     inp.value='';
     const tag=document.createElement('div');tag.className='pat-tag';
-    tag.innerHTML=pat+' <span class="pat-rm" onclick="delPat('+r.id+',this)">×</span>';
+    tag.innerHTML=_escHtml(pat)+' <span class="pat-rm" onclick="delPat('+r.id+',this)">×</span>';
     document.getElementById('man-pats').appendChild(tag);toast(t('pattern_added'));
   }catch(e){toast(t('error')+e.message)}
 }
@@ -2061,7 +2061,7 @@ async function admBal(){
     toast('✅ '+t('current_balance')+': $'+r.new_balance.toFixed(2));
     document.getElementById('adm-fb').textContent='$'+r.new_balance.toFixed(2);
     document.getElementById('adm-delta').value='';
-    if(ADM_U.telegram_id===ME&&ME.telegram_id){ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);}
+    if(ME&&ADM_U.telegram_id===ME.telegram_id){ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);}
   }catch(e){toast(t('error')+e.message);}
 }
 
