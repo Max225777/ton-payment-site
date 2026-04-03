@@ -1844,17 +1844,9 @@ function loadSetPage(){
 function fillPaySelect(){/* channel select removed */}
 
 function openBuySlot(){
-  const price=CFG.price_per_slot||2;
-  if(ME&&ME.balance>=price){
-    if(confirm(t('buy_slot_confirm',{price:price.toFixed(2),balance:(ME.balance||0).toFixed(2)}))){
-      api('POST','/api/pay/from_balance',{channel_id:null,days:30})
-        .then(function(r){toast(t('slot_paid'));ME.balance=r.new_balance;document.getElementById('tb-bal').textContent='$'+r.new_balance.toFixed(2);loadChannels();})
-        .catch(function(e){toast(t('error')+e.message);});
-    }
-    return;
-  }
-  toast(t('insuf_balance'),3000);
-  setTimeout(function(){goTo('s-fin');setNav('nfin');setTimeout(function(){openPayModal('crypto',true);},300);},600);
+  // Redirect to channels page where user can pay for specific channel
+  goTo('s-ch');setNav('nch');
+  toast(LANG==='uk'?'Оберіть канал для оплати підписки':'Выберите канал для оплаты подписки',2500);
 }
 
 function buySlot(chId){
