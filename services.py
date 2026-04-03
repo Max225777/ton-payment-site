@@ -3742,6 +3742,11 @@ async def get_marketplace_channels() -> list:
 # ─── ADMIN ────────────────────────────────────────────────────────────────────
 
 async def get_admin_stats() -> dict:
+    # Calculate days_running outside try block so it always works
+    try:
+        days = (date.today() - date.fromisoformat(BOT_LAUNCH_DATE)).days if BOT_LAUNCH_DATE else 0
+    except Exception:
+        days = 0
     try:
         async with aiosqlite.connect(DB_PATH, timeout=10) as db:
             total_users = (await _fetchone(db, "SELECT COUNT(*) as c FROM users"))["c"]
@@ -3773,12 +3778,6 @@ async def get_admin_stats() -> dict:
             except Exception:
                 total_ai_tokens = 0
 
-            days = 0
-            try:
-                days = (date.today() - date.fromisoformat(BOT_LAUNCH_DATE)).days if BOT_LAUNCH_DATE else 0
-            except Exception:
-                days = 1
-
             return {
                 "total_users":        total_users,
                 "new_today":          new_today,
@@ -3801,7 +3800,7 @@ async def get_admin_stats() -> dict:
             "channels_by_status": {}, "total_published": 0,
             "total_revenue": 0.0, "total_referral_paid": 0.0,
             "total_ai_tokens": 0, "ai_provider": AI_PROVIDER,
-            "ai_model": "", "crypto_mode": "testnet", "days_running": 1,
+            "ai_model": "", "crypto_mode": "testnet", "days_running": days,
         }
 
 
