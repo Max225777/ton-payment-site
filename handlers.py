@@ -411,7 +411,7 @@ async def cmd_admsearch(msg: Message):
     from services import search_users as _su
     args = msg.text.split(maxsplit=1)
     if len(args) < 2:
-        await msg.answer("Використання: /admsearch <ID або @username>"); return
+        await msg.answer("Використання: /admsearch ID або @username"); return
     query = args[1].strip()
     users = await _su(query)
     if not users:

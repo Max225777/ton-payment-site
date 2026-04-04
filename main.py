@@ -453,29 +453,22 @@ async def api_channel_add(request):
             try:
                 client, _ = await _get_telethon_client()
                 from telethon.tl.functions.messages import CheckChatInviteRequest
-                from telethon import utils as tl_utils
                 # Extract hash from invite link
                 inv_hash = invite_link.split("+")[-1].split("/joinchat/")[-1].split("/")[-1].split("?")[0]
                 invite_info = await client(CheckChatInviteRequest(inv_hash))
-                # ChatInviteAlready means we're already in the chat
-                from telethon.tl.types import ChatInviteAlready, ChatInvitePeek
                 if hasattr(invite_info, 'chat'):
                     chat_entity = invite_info.chat
-                    chat_id = -1000000000000 - chat_entity.id if hasattr(chat_entity, 'id') else None
-                    # Use proper Telethon ID conversion
-                    chat_id = tl_utils.get_peer_id(chat_entity)
-                    if chat_id > 0:
-                        chat_id = -chat_id
-                    if not str(chat_id).startswith('-100'):
-                        chat_id = int(f"-100{abs(chat_id)}")
+                    # Convert Telethon channel ID to Bot API format: -100XXXXXXXXXX
+                    raw_id = chat_entity.id
+                    chat_id = int(f"-100{raw_id}")
                     title = getattr(chat_entity, 'title', '') or invite_link
                     username = getattr(chat_entity, 'username', '') or ''
+                    log.info(f"Invite link resolved: raw_id={raw_id}, chat_id={chat_id}, title={title}")
                 else:
-                    # ChatInvite - not a member yet, get info from invite
+                    # ChatInvite - bot is not a member yet
                     title = getattr(invite_info, 'title', '') or invite_link
-                    username = ''
                     return _web.json_response({"error":"channel_error",
-                        "message": "Бот повинен бути учасником каналу. Спочатку додайте бота як адміністратора."}, status=400)
+                        "message": f"Бот не є учасником каналу «{title}». Спочатку додайте бота як адміністратора."}, status=400)
             except Exception as e:
                 err_msg = str(e)
                 if 'INVITE_HASH_EXPIRED' in err_msg:
@@ -496,6 +489,7 @@ async def api_channel_add(request):
                     return _web.json_response({"error":"bot_not_admin",
                         "message": f"Додайте @{(await _bot_instance.me()).username} як адміністратора каналу"}, status=400)
             except Exception as e:
+                log.error(f"Bot admin check failed for chat_id={chat_id}: {e}")
                 return _web.json_response({"error":"bot_not_admin",
                     "message": f"Додайте @{(await _bot_instance.me()).username} як адміністратора каналу"}, status=400)
         else:
