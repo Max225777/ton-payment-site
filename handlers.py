@@ -430,6 +430,63 @@ async def cmd_admsearch(msg: Message):
         )
     await msg.answer("🔍 <b>Результати пошуку</b>\n\n" + "\n\n".join(lines), parse_mode=ParseMode.HTML)
 
+
+@router.message(Command("bonus"))
+async def cmd_bonus(msg: Message):
+    """Admin command: /bonus @username 10 or /bonus 123456789 5.50"""
+    if msg.from_user.id not in ADMIN_IDS: return
+    from services import DB_PATH, _fetchone
+    import aiosqlite
+    args = msg.text.split()
+    if len(args) < 3:
+        await msg.answer(
+            "💰 <b>Нарахування бонусу</b>\n\n"
+            "Формат: <code>/bonus @username сума</code>\n"
+            "Або: <code>/bonus telegram_id сума</code>\n\n"
+            "Приклади:\n"
+            "<code>/bonus @ivan 10</code> — нарахувати $10\n"
+            "<code>/bonus 123456789 5.50</code> — нарахувати $5.50\n"
+            "<code>/bonus @ivan -3</code> — зняти $3",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    target = args[1].strip().lstrip("@")
+    try:
+        amount = float(args[2])
+    except ValueError:
+        await msg.answer("❌ Невірна сума. Приклад: <code>/bonus @ivan 10</code>", parse_mode=ParseMode.HTML)
+        return
+    note = " ".join(args[3:]) if len(args) > 3 else "Бонус (admin)"
+    # Find user by ID or username
+    user = None
+    if target.isdigit():
+        user = await get_user(int(target))
+    if not user:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            user = await _fetchone(db, "SELECT * FROM users WHERE LOWER(username)=LOWER(?)", (target,))
+    if not user:
+        await msg.answer(f"❌ Користувача <code>{target}</code> не знайдено", parse_mode=ParseMode.HTML)
+        return
+    tg_id = user["telegram_id"]
+    uname = user.get("username") or user.get("first_name") or str(tg_id)
+    # Record transaction
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        await db.execute(
+            "INSERT INTO transactions(user_id,amount,type,description) VALUES(?,?,?,?)",
+            (user["id"], amount, "admin_adjust", note))
+        await db.commit()
+    new_bal = await adjust_user_balance(tg_id, amount)
+    sign = "+" if amount > 0 else ""
+    await msg.answer(
+        f"✅ <b>Бонус нараховано</b>\n\n"
+        f"👤 @{uname} [<code>{tg_id}</code>]\n"
+        f"💰 {sign}${amount:.2f}\n"
+        f"📝 {note}\n"
+        f"💵 Новий баланс: <b>${new_bal:.2f}</b>",
+        parse_mode=ParseMode.HTML
+    )
+
+
 @router.callback_query(F.data == "adm_finance")
 async def adm_finance(cq: CallbackQuery):
     if cq.from_user.id not in ADMIN_IDS: return
