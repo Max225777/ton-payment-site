@@ -892,12 +892,20 @@ async def api_admin_users(request):
 
 @_auth
 async def api_admin_user_get(request):
-    from services import ADMIN_IDS, get_user, get_user_balance, get_user_channels, get_channel_settings
+    from services import ADMIN_IDS, get_user, get_user_balance, get_user_channels, get_channel_settings, DB_PATH, _fetchone
+    import aiosqlite
     if request["tg_user"]["id"] not in ADMIN_IDS:
         return _web.json_response({"error":"forbidden"}, status=403)
-    tg_id = int(request.match_info["tg_id"])
-    user = await get_user(tg_id)
+    raw = request.match_info["tg_id"].strip().lstrip("@")
+    # Try as telegram_id (number) first, then as username
+    user = None
+    if raw.isdigit():
+        user = await get_user(int(raw))
+    if not user:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            user = await _fetchone(db, "SELECT * FROM users WHERE LOWER(username)=LOWER(?)", (raw,))
     if not user: return _web.json_response({"error":"not found"}, status=404)
+    tg_id = user["telegram_id"]
     balance = await get_user_balance(tg_id)
     channels = await get_user_channels(tg_id)
     # Enrich channels with settings

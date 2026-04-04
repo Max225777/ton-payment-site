@@ -638,7 +638,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   <div class="stit">Управління балансом</div>
   <div class="card" style="padding:16px">
     <div style="display:flex;gap:10px;margin-bottom:12px">
-      <input class="inp" id="adm-tid" placeholder="Telegram ID" type="number" style="flex:1">
+      <input class="inp" id="adm-tid" placeholder="Telegram ID або @username" style="flex:1">
       <button class="btn bg" onclick="admFind()" style="flex-shrink:0">Знайти</button>
     </div>
     <div id="adm-found" style="display:none">
@@ -652,6 +652,12 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <input class="inp" id="adm-delta" placeholder="Сума (+ або -)" type="number" step="0.01" style="flex:1">
         <input class="inp" id="adm-note" placeholder="Примітка" style="flex:1">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn bg" style="flex:1;padding:8px 0;font-size:12px" onclick="document.getElementById('adm-delta').value='1'">+$1</button>
+        <button class="btn bg" style="flex:1;padding:8px 0;font-size:12px" onclick="document.getElementById('adm-delta').value='5'">+$5</button>
+        <button class="btn bg" style="flex:1;padding:8px 0;font-size:12px" onclick="document.getElementById('adm-delta').value='10'">+$10</button>
+        <button class="btn bg" style="flex:1;padding:8px 0;font-size:12px" onclick="document.getElementById('adm-delta').value='50'">+$50</button>
       </div>
       <button class="btn bp" onclick="admBal()">Змінити баланс</button>
     </div>
@@ -2033,9 +2039,9 @@ function admSearch(q){
 function prefAdm(id){document.getElementById('adm-tid').value=id;admFind();}
 
 async function admFind(){
-  const tid=document.getElementById('adm-tid').value.trim();if(!tid)return;
+  const tid=document.getElementById('adm-tid').value.trim().replace(/^@/,'');if(!tid)return;
   try{
-    ADM_U=await api('GET','/api/admin/user/'+tid);
+    ADM_U=await api('GET','/api/admin/user/'+encodeURIComponent(tid));
     document.getElementById('adm-found').style.display='block';
     document.getElementById('adm-fn').textContent='@'+(ADM_U.username||ADM_U.first_name||ADM_U.telegram_id);
     document.getElementById('adm-fi').textContent='ID: '+ADM_U.telegram_id+' · '+(ADM_U.channels&&ADM_U.channels.length||0)+' '+t('user_channels');
