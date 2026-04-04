@@ -2203,17 +2203,25 @@ function closeAddCh(e){
 }
 async function doAddChannel(){
   const inp=document.getElementById('add-ch-inp');
-  let username=inp.value.trim();
-  username=username.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
+  let raw=inp.value.trim();
+  // Detect invite links like t.me/+hash or t.me/joinchat/hash
+  let username='',invite_link='';
+  if(raw.match(/t\.me\/\+[\w-]+/)||raw.match(/t\.me\/joinchat\/[\w-]+/)){
+    invite_link=raw.match(/https?:\/\//)?raw:'https://'+raw;
+  }else{
+    username=raw.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
+  }
   const errEl=document.getElementById('add-ch-err');
-  if(!username){errEl.textContent=t('enter_username');errEl.style.display='block';return;}
+  if(!username&&!invite_link){errEl.textContent=t('enter_username');errEl.style.display='block';return;}
   const btn=document.getElementById('add-ch-btn');
   btn.textContent=t('adding');btn.disabled=true;errEl.style.display='none';
   try{
     const category=document.getElementById('add-ch-cat').value||'general';
-    const r=await api('POST','/api/channel/add',{username:username,category:category});
+    const payload={category:category};
+    if(invite_link) payload.invite_link=invite_link; else payload.username=username;
+    const r=await api('POST','/api/channel/add',payload);
     document.getElementById('add-ch-modal').classList.remove('on');
-    toast(r.trial?t('trial_added',{days:r.trial_days}):t('channel_added',{username:r.username}));
+    toast(r.trial?t('trial_added',{days:r.trial_days}):t('channel_added',{username:r.username||r.title}));
     await loadChannels();
   }catch(e){
     let msg=e.message;

@@ -438,18 +438,29 @@ async def api_channel_add(request):
     tg_id = request["tg_user"]["id"]
     body = await request.json()
     username = body.get("username","").strip().lstrip("@")
-    if not username:
+    invite_link = body.get("invite_link","").strip()
+    if not username and not invite_link:
         return _web.json_response({"error":"username required"}, status=400)
     user = await get_user(tg_id)
     if not user:
         return _web.json_response({"error":"user not found"}, status=404)
     channels = await get_user_channels(tg_id)
-    if any(c.get("username","").lower()==username.lower() for c in channels):
-        return _web.json_response({"error":"already_added","message":"Этот канал уже добавлен"}, status=400)
     try:
-        chat = await _bot_instance.get_chat("@"+username)
-        chat_id = chat.id
-        title = chat.title or username
+        if invite_link:
+            # Handle invite link (t.me/+hash or t.me/joinchat/hash)
+            chat = await _bot_instance.get_chat(invite_link)
+            chat_id = chat.id
+            title = chat.title or invite_link
+            username = chat.username or ""
+        else:
+            if any(c.get("username","").lower()==username.lower() for c in channels):
+                return _web.json_response({"error":"already_added","message":"Этот канал уже добавлен"}, status=400)
+            chat = await _bot_instance.get_chat("@"+username)
+            chat_id = chat.id
+            title = chat.title or username
+        # Check duplicate by chat_id
+        if any(c.get("chat_id")==chat_id for c in channels):
+            return _web.json_response({"error":"already_added","message":"Этот канал уже добавлен"}, status=400)
         member = await _bot_instance.get_chat_member(chat_id, (await _bot_instance.me()).id)
         if member.status not in ("administrator","creator"):
             return _web.json_response({"error":"bot_not_admin",
