@@ -79,7 +79,7 @@ ADMIN_IDS: List[int] = [int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.st
 
 BOT_TOKEN            = os.getenv("BOT_TOKEN", "")
 BOT_USERNAME         = os.getenv("BOT_USERNAME", "")
-BOT_LAUNCH_DATE      = os.getenv("BOT_LAUNCH_DATE", "2026-03-20") or "2026-03-20"
+BOT_LAUNCH_DATE      = "2026-03-20"
 BOT_OWNER_USERNAME   = os.getenv("BOT_OWNER_USERNAME", "")
 MANAGER_USERNAME     = os.getenv("MANAGER_USERNAME", "")
 # REQUIRED_CHANNELS формат: "Назва|https://t.me/username,Назва2|https://t.me/username2"
