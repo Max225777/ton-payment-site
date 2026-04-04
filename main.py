@@ -434,7 +434,8 @@ async def api_channel_delete(request):
 async def api_channel_add(request):
     from services import (get_user, get_user_channels, create_channel, activate_trial,
                           TRIAL_DAYS, TRIAL_DISABLED, _bot_instance,
-                          detect_and_save_signature_for_new_source, parse_channel_sources)
+                          detect_and_save_signature_for_new_source, parse_channel_sources,
+                          _get_telethon_client)
     tg_id = request["tg_user"]["id"]
     body = await request.json()
     username = body.get("username","").strip().lstrip("@")
@@ -447,24 +448,69 @@ async def api_channel_add(request):
     channels = await get_user_channels(tg_id)
     try:
         if invite_link:
-            # Handle invite link (t.me/+hash or t.me/joinchat/hash)
-            chat = await _bot_instance.get_chat(invite_link)
-            chat_id = chat.id
-            title = chat.title or invite_link
-            username = chat.username or ""
+            # Resolve invite link via Telethon (bot API can't handle invite links)
+            client = None
+            try:
+                client, _ = await _get_telethon_client()
+                from telethon.tl.functions.messages import CheckChatInviteRequest
+                from telethon import utils as tl_utils
+                # Extract hash from invite link
+                inv_hash = invite_link.split("+")[-1].split("/joinchat/")[-1].split("/")[-1].split("?")[0]
+                invite_info = await client(CheckChatInviteRequest(inv_hash))
+                # ChatInviteAlready means we're already in the chat
+                from telethon.tl.types import ChatInviteAlready, ChatInvitePeek
+                if hasattr(invite_info, 'chat'):
+                    chat_entity = invite_info.chat
+                    chat_id = -1000000000000 - chat_entity.id if hasattr(chat_entity, 'id') else None
+                    # Use proper Telethon ID conversion
+                    chat_id = tl_utils.get_peer_id(chat_entity)
+                    if chat_id > 0:
+                        chat_id = -chat_id
+                    if not str(chat_id).startswith('-100'):
+                        chat_id = int(f"-100{abs(chat_id)}")
+                    title = getattr(chat_entity, 'title', '') or invite_link
+                    username = getattr(chat_entity, 'username', '') or ''
+                else:
+                    # ChatInvite - not a member yet, get info from invite
+                    title = getattr(invite_info, 'title', '') or invite_link
+                    username = ''
+                    return _web.json_response({"error":"channel_error",
+                        "message": "Бот повинен бути учасником каналу. Спочатку додайте бота як адміністратора."}, status=400)
+            except Exception as e:
+                err_msg = str(e)
+                if 'INVITE_HASH_EXPIRED' in err_msg:
+                    return _web.json_response({"error":"channel_error","message":"Посилання недійсне або застаріле"}, status=400)
+                return _web.json_response({"error":"channel_error","message":f"Не вдалося знайти канал: {err_msg}"}, status=400)
+            finally:
+                if client:
+                    try: await client.disconnect()
+                    except Exception: pass
+            # Now verify bot is admin using aiogram with resolved chat_id
+            try:
+                chat = await _bot_instance.get_chat(chat_id)
+                title = chat.title or title
+                if chat.username:
+                    username = chat.username
+                member = await _bot_instance.get_chat_member(chat_id, (await _bot_instance.me()).id)
+                if member.status not in ("administrator","creator"):
+                    return _web.json_response({"error":"bot_not_admin",
+                        "message": f"Додайте @{(await _bot_instance.me()).username} як адміністратора каналу"}, status=400)
+            except Exception as e:
+                return _web.json_response({"error":"bot_not_admin",
+                    "message": f"Додайте @{(await _bot_instance.me()).username} як адміністратора каналу"}, status=400)
         else:
             if any(c.get("username","").lower()==username.lower() for c in channels):
-                return _web.json_response({"error":"already_added","message":"Этот канал уже добавлен"}, status=400)
+                return _web.json_response({"error":"already_added","message":"Цей канал вже додано"}, status=400)
             chat = await _bot_instance.get_chat("@"+username)
             chat_id = chat.id
             title = chat.title or username
+            member = await _bot_instance.get_chat_member(chat_id, (await _bot_instance.me()).id)
+            if member.status not in ("administrator","creator"):
+                return _web.json_response({"error":"bot_not_admin",
+                    "message": f"Додайте @{(await _bot_instance.me()).username} як адміністратора"}, status=400)
         # Check duplicate by chat_id
         if any(c.get("chat_id")==chat_id for c in channels):
-            return _web.json_response({"error":"already_added","message":"Этот канал уже добавлен"}, status=400)
-        member = await _bot_instance.get_chat_member(chat_id, (await _bot_instance.me()).id)
-        if member.status not in ("administrator","creator"):
-            return _web.json_response({"error":"bot_not_admin",
-                "message": f"Добавьте @{(await _bot_instance.me()).username} как администратора"}, status=400)
+            return _web.json_response({"error":"already_added","message":"Цей канал вже додано"}, status=400)
     except Exception as e:
         return _web.json_response({"error":"channel_error","message":str(e)}, status=400)
     category = body.get("category", "general")

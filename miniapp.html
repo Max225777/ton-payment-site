@@ -321,10 +321,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
         як <b style="color:var(--tx)">адміністратора</b> вашого каналу, потім вставте посилання або username.
       </div>
       <div style="margin-bottom:16px">
-        <div style="font-size:13px;color:var(--mu);margin-bottom:8px;font-weight:700">Username или ссылка на канал</div>
-        <input class="inp" id="add-ch-inp" placeholder="@channel или t.me/channel" style="font-size:17px;padding:15px 16px">
+        <div style="font-size:13px;color:var(--mu);margin-bottom:8px;font-weight:700" id="add-ch-label">Username або будь-яке посилання</div>
+        <input class="inp" id="add-ch-inp" placeholder="@channel або t.me/+..." style="font-size:17px;padding:15px 16px">
         <div style="font-size:12px;color:var(--mu);margin-top:8px;line-height:1.5">
-          Можно вставить: <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">https://t.me/channel</span>
+          Можна вставити: <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">t.me/+AbCdEf</span>
         </div>
       </div>
       <div style="margin-bottom:16px">
@@ -770,7 +770,7 @@ ru:{
   add_channel:'Добавить канал', add_channel_desc:'7 дней бесплатно · потом $2/мес',
   channel_category:'Категория канала', cat_general:'Общее', cat_news:'Новости / Медиа', cat_tech:'Технологии / IT', cat_crypto:'Крипто / Финансы / Трейдинг', cat_entertainment:'Развлечения / Мемы / Юмор', cat_education:'Образование / Наука', cat_business:'Бизнес / Маркетинг / SMM', cat_lifestyle:'Лайфстайл / Мода / Красота', cat_sport:'Спорт / Фитнес', cat_gaming:'Игры / Киберспорт', cat_music:'Музыка / Подкасты', cat_travel:'Путешествия / Еда', cat_auto:'Авто / Мото', cat_realestate:'Недвижимость', cat_health:'Здоровье / Психология', cat_politics:'Политика / Общество', cat_animals:'Животные', cat_art:'Искусство / Дизайн / Фото', cat_18plus:'18+', cat_other:'Другое',
   add_bot_first:'Сначала добавьте бота', as_admin:'администратора',
-  username_or_link:'Username или ссылка на канал', can_paste:'Можно вставить:',
+  username_or_link:'Username или любая ссылка на канал', can_paste:'Можно вставить:',
   free_trial:'🎁 7 дней бесплатно',
   free_trial_desc:'Первый канал — пробный период 7 дней.<br>Потом — всего <b style="color:var(--tx)">$2/мес</b>.',
   btn_add_channel:'Добавить канал', adding:'Добавляю...',
@@ -925,7 +925,7 @@ uk:{
   add_channel:'Додати канал', add_channel_desc:'7 днів безкоштовно · потім $2/міс',
   channel_category:'Категорія каналу', cat_general:'Загальне', cat_news:'Новини / Медіа', cat_tech:'Технології / IT', cat_crypto:'Крипто / Фінанси / Трейдинг', cat_entertainment:'Розваги / Меми / Гумор', cat_education:'Освіта / Наука', cat_business:'Бізнес / Маркетинг / SMM', cat_lifestyle:'Лайфстайл / Мода / Краса', cat_sport:'Спорт / Фітнес', cat_gaming:'Ігри / Кіберспорт', cat_music:'Музика / Подкасти', cat_travel:'Подорожі / Їжа', cat_auto:'Авто / Мото', cat_realestate:'Нерухомість', cat_health:"Здоров'я / Психологія", cat_politics:'Політика / Суспільство', cat_animals:'Тварини', cat_art:'Мистецтво / Дизайн / Фото', cat_18plus:'18+', cat_other:'Інше',
   add_bot_first:'Спочатку додайте бота', as_admin:'адміністратора',
-  username_or_link:'Username або посилання на канал', can_paste:'Можна вставити:',
+  username_or_link:'Username або будь-яке посилання на канал', can_paste:'Можна вставити:',
   free_trial:'🎁 7 днів безкоштовно',
   free_trial_desc:'Перший канал — пробний період 7 днів.<br>Після — лише <b style="color:var(--tx)">$2/міс</b>.',
   btn_add_channel:'Додати канал', adding:'Додаю...',
@@ -1271,8 +1271,8 @@ function applyLang(){
     var _acmT=_acm.querySelector('div[style*="font-size:18px"]');if(_acmT)_acmT.textContent=t('add_channel');
     var _acmD=_acm.querySelector('div[style*="font-size:14px"][style*="color:var(--mu)"]');
     if(_acmD)_acmD.innerHTML=t('add_bot_first')+'<br><a id="add-bot-link" href="https://t.me/'+(ME&&ME.bot_username||'SocialGiant_AutoPost_bot')+'" style="color:var(--acc2);font-size:15px;font-weight:700;text-decoration:none" onclick="event.preventDefault();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(this.href);else window.open(this.href)"><b id="add-bot-name">@'+(ME&&ME.bot_username||'SocialGiant_AutoPost_bot')+'</b></a><br>'+(_I[LANG].as_admin?LANG==='uk'?'як <b style="color:var(--tx)">адміністратора</b> вашого каналу, потім вставте посилання або username.':'как <b style="color:var(--tx)">администратора</b> вашего канала, затем вставьте ссылку или username.':'');
-    var _acmL=_acm.querySelector('div[style*="font-size:13px"][style*="margin-bottom:8px"]');if(_acmL)_acmL.textContent=t('username_or_link');
-    var _acmH=_acm.querySelector('div[style*="font-size:12px"][style*="margin-top:8px"]');if(_acmH)_acmH.innerHTML=t('can_paste')+' <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">https://t.me/channel</span>';
+    var _acmL=document.getElementById('add-ch-label');if(_acmL)_acmL.textContent=t('username_or_link');
+    var _acmH=_acm.querySelector('div[style*="font-size:12px"][style*="margin-top:8px"]');if(_acmH)_acmH.innerHTML=t('can_paste')+' <span style="color:var(--acc2)">@channel</span> · <span style="color:var(--acc2)">t.me/channel</span> · <span style="color:var(--acc2)">t.me/+AbCdEf</span>';
     var _acmG=_acm.querySelector('div[style*="background:rgba(45,212,160"]');
     if(_acmG){var _gg=_acmG.querySelectorAll('div');if(_gg[0])_gg[0].innerHTML=t('free_trial');if(_gg[1])_gg[1].innerHTML=t('free_trial_desc');}
     var _acmB=document.getElementById('add-ch-btn');if(_acmB)_acmB.textContent=t('btn_add_channel');
