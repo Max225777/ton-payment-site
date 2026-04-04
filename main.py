@@ -450,35 +450,59 @@ async def api_channel_add(request):
         if invite_link:
             # Resolve invite link via Telethon (bot API can't handle invite links)
             client = None
+            chat_id = None
+            title = invite_link
             try:
                 client, _ = await _get_telethon_client()
-                from telethon.tl.functions.messages import CheckChatInviteRequest
-                # Extract hash from invite link
+                from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
+                from telethon.tl.functions.channels import LeaveChannelRequest
                 inv_hash = invite_link.split("+")[-1].split("/joinchat/")[-1].split("/")[-1].split("?")[0]
+                log.info(f"Invite link: hash={inv_hash}")
                 invite_info = await client(CheckChatInviteRequest(inv_hash))
+                log.info(f"Invite info type: {type(invite_info).__name__}")
                 if hasattr(invite_info, 'chat'):
+                    # Telethon account already in channel
                     chat_entity = invite_info.chat
-                    # Convert Telethon channel ID to Bot API format: -100XXXXXXXXXX
-                    raw_id = chat_entity.id
-                    chat_id = int(f"-100{raw_id}")
+                    chat_id = int(f"-100{chat_entity.id}")
                     title = getattr(chat_entity, 'title', '') or invite_link
                     username = getattr(chat_entity, 'username', '') or ''
-                    log.info(f"Invite link resolved: raw_id={raw_id}, chat_id={chat_id}, title={title}")
+                    log.info(f"Invite resolved (already member): chat_id={chat_id}, title={title}")
                 else:
-                    # ChatInvite - bot is not a member yet
+                    # Not a member — join temporarily to get chat_id, then leave
                     title = getattr(invite_info, 'title', '') or invite_link
-                    return _web.json_response({"error":"channel_error",
-                        "message": f"Бот не є учасником каналу «{title}». Спочатку додайте бота як адміністратора."}, status=400)
+                    log.info(f"Not a member of «{title}», joining temporarily...")
+                    updates = await client(ImportChatInviteRequest(inv_hash))
+                    chat_entity = updates.chats[0] if updates.chats else None
+                    if chat_entity:
+                        chat_id = int(f"-100{chat_entity.id}")
+                        title = getattr(chat_entity, 'title', '') or title
+                        username = getattr(chat_entity, 'username', '') or ''
+                        log.info(f"Joined channel: chat_id={chat_id}, title={title}")
+                        # Leave immediately
+                        try:
+                            await client(LeaveChannelRequest(chat_entity))
+                            log.info(f"Left channel {chat_id}")
+                        except Exception as le:
+                            log.warning(f"Failed to leave channel {chat_id}: {le}")
+                    else:
+                        return _web.json_response({"error":"channel_error",
+                            "message":"Не вдалося отримати інформацію про канал"}, status=400)
             except Exception as e:
                 err_msg = str(e)
+                log.error(f"Invite link error: {err_msg}")
                 if 'INVITE_HASH_EXPIRED' in err_msg:
                     return _web.json_response({"error":"channel_error","message":"Посилання недійсне або застаріле"}, status=400)
-                return _web.json_response({"error":"channel_error","message":f"Не вдалося знайти канал: {err_msg}"}, status=400)
+                if 'USER_ALREADY_PARTICIPANT' in err_msg:
+                    pass  # will try bot API below
+                else:
+                    return _web.json_response({"error":"channel_error","message":f"Не вдалося знайти канал: {err_msg}"}, status=400)
             finally:
                 if client:
                     try: await client.disconnect()
                     except Exception: pass
-            # Now verify bot is admin using aiogram with resolved chat_id
+            if not chat_id:
+                return _web.json_response({"error":"channel_error","message":"Не вдалося визначити ID каналу"}, status=400)
+            # Verify bot is admin using aiogram
             try:
                 chat = await _bot_instance.get_chat(chat_id)
                 title = chat.title or title
