@@ -1480,9 +1480,16 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         if _clean.upper() == 'NONE' or len(_clean) < 3:
             log.info(f'detect_signature @{username}: no pattern')
             return ''
-        # Validate: must appear in at least 40% of posts
-        _first_line = _clean.splitlines()[0].strip()[:60]
-        _appear_count = sum(1 for _t in texts if _first_line.lower() in _t.lower())
+        # Validate: any signature line must appear in at least 40% of posts
+        _sig_check_lines = [l.strip() for l in _clean.splitlines() if len(l.strip()) >= 4]
+        _check_line = _sig_check_lines[0][:60] if _sig_check_lines else _clean.strip()[:60]
+        _appear_count = sum(1 for _t in texts if _check_line.lower() in _t.lower())
+        # If first line doesn't match enough, try other lines
+        if _appear_count < max(2, int(len(texts) * 0.4)) and len(_sig_check_lines) > 1:
+            for _sl in _sig_check_lines[1:]:
+                _cnt = sum(1 for _t in texts if _sl[:60].lower() in _t.lower())
+                if _cnt > _appear_count:
+                    _appear_count = _cnt
         if _appear_count < max(2, int(len(texts) * 0.4)):
             log.info(f'detect_signature @{username}: AI result appears only {_appear_count}/{len(texts)} times — rejected')
             return ''
@@ -1626,20 +1633,54 @@ def _cut_source_signature(text: str, signature: str) -> str:
     """Remove promo signature from end of text. Multi-strategy aggressive cut."""
     if not signature or not text:
         return text
+    import re as _r
 
-    sig_key = signature.strip().lower()
+    # Normalize: collapse whitespace for comparison
+    def _norm(s):
+        return _r.sub(r'\s+', ' ', s.strip().lower())
+
+    sig_norm = _norm(signature)
     text_lower = text.lower()
 
-    # Strategy 1: find and cut full signature block
-    idx = text_lower.rfind(sig_key[:70])
-    if idx != -1 and idx > len(text) * 0.10:
-        return text[:idx].strip()
+    # Strategy 1: find full signature block (normalized whitespace)
+    text_norm = _norm(text)
+    idx = text_norm.rfind(sig_norm[:120])
+    if idx != -1 and idx > len(text_norm) * 0.10:
+        # Find corresponding position in original text
+        # Count chars in normalized text up to idx → map back to original
+        orig_idx = 0
+        norm_count = 0
+        for ci, ch in enumerate(text):
+            if norm_count >= idx:
+                orig_idx = ci
+                break
+            if ch.strip() or (norm_count > 0 and text_norm[norm_count:norm_count+1] == ' '):
+                norm_count += 1
+            if ch in (' ', '\t', '\n', '\r'):
+                # Skip consecutive whitespace
+                while norm_count < len(text_norm) and text_norm[norm_count] == ' ':
+                    norm_count += 1
+                    break
+        else:
+            orig_idx = len(text)
+        # Simpler approach: find first line of signature in original text
+        sig_first_line = signature.strip().splitlines()[0].strip().lower()
+        fidx = text_lower.rfind(sig_first_line[:80])
+        if fidx != -1 and fidx > len(text) * 0.10:
+            return text[:fidx].strip()
 
-    # Strategy 2: cut by each line of signature (find first occurrence)
+    # Strategy 2: find first line of signature and cut from there
     sig_lines = [l.strip() for l in signature.strip().splitlines() if len(l.strip()) >= 4]
+    if sig_lines:
+        first_sig = sig_lines[0].lower()[:80]
+        fidx = text_lower.rfind(first_sig)
+        if fidx != -1 and fidx > len(text) * 0.10:
+            return text[:fidx].strip()
+
+    # Strategy 3: find ANY signature line and cut from the earliest match in the tail
     best_idx = -1
     for sig_line in sig_lines:
-        sl = sig_line.lower()[:70]
+        sl = sig_line.lower()[:80]
         found = text_lower.rfind(sl)
         if found != -1 and found > len(text) * 0.10:
             if best_idx < 0 or found < best_idx:
@@ -1647,7 +1688,7 @@ def _cut_source_signature(text: str, signature: str) -> str:
     if best_idx >= 0:
         return text[:best_idx].strip()
 
-    # Strategy 3: remove trailing lines that match any sig fragment
+    # Strategy 4: remove trailing lines that match any sig fragment
     lines = text.strip().splitlines()
     sig_words = set(w for l in sig_lines for w in l.lower().split() if len(w) > 4)
     cut_from = len(lines)
@@ -1658,7 +1699,6 @@ def _cut_source_signature(text: str, signature: str) -> str:
             continue
         line_words = set(line.split())
         overlap = line_words & sig_words
-        # If 50%+ of sig words appear in this line, it's a sig line
         if len(overlap) >= max(1, len(sig_words) * 0.3):
             cut_from = i
         else:
