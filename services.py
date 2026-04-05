@@ -1632,6 +1632,15 @@ def _cut_source_signature(text: str, signature: str) -> str:
     def _norm(s):
         return _r.sub(r'\s+', ' ', s.strip().lower())
 
+    # Clean links/HTML from a string for link-agnostic matching
+    def _strip_links(s):
+        s = _r.sub(r'<a[^>]+>.*?</a>', '', s)
+        s = _r.sub(r'https?://\S+', '', s)
+        s = _r.sub(r'@[A-Za-z0-9_]{3,}', '', s)
+        s = _r.sub(r'<[^>]+>', '', s)
+        s = _r.sub(r'\([^)]*\)', '', s)  # remove empty parens like "-()"
+        return s
+
     sig_norm = _norm(signature)
     text_lower = text.lower()
 
@@ -1639,28 +1648,35 @@ def _cut_source_signature(text: str, signature: str) -> str:
     text_norm = _norm(text)
     idx = text_norm.rfind(sig_norm[:120])
     if idx != -1 and idx > len(text_norm) * 0.10:
-        # Find corresponding position in original text
-        # Count chars in normalized text up to idx → map back to original
-        orig_idx = 0
-        norm_count = 0
-        for ci, ch in enumerate(text):
-            if norm_count >= idx:
-                orig_idx = ci
-                break
-            if ch.strip() or (norm_count > 0 and text_norm[norm_count:norm_count+1] == ' '):
-                norm_count += 1
-            if ch in (' ', '\t', '\n', '\r'):
-                # Skip consecutive whitespace
-                while norm_count < len(text_norm) and text_norm[norm_count] == ' ':
-                    norm_count += 1
-                    break
-        else:
-            orig_idx = len(text)
-        # Simpler approach: find first line of signature in original text
         sig_first_line = signature.strip().splitlines()[0].strip().lower()
         fidx = text_lower.rfind(sig_first_line[:80])
         if fidx != -1 and fidx > len(text) * 0.10:
             return text[:fidx].strip()
+
+    # Strategy 1b: try matching with links stripped from both sides
+    sig_clean = _strip_links(signature)
+    sig_clean_norm = _norm(sig_clean)
+    text_clean = _strip_links(text)
+    text_clean_norm = _norm(text_clean)
+    if sig_clean_norm and len(sig_clean_norm) > 10:
+        # Try first 80 chars of cleaned signature
+        search_chunk = sig_clean_norm[:80]
+        cidx = text_clean_norm.rfind(search_chunk)
+        if cidx != -1 and cidx > len(text_clean_norm) * 0.10:
+            # Map position back: find first sig word in original text
+            first_words = [w for w in sig_clean_norm.split()[:3] if len(w) > 2]
+            if first_words:
+                # Find the first signature word in the tail of original text
+                for fw in first_words:
+                    fidx = text_lower.rfind(fw)
+                    if fidx != -1 and fidx > len(text) * 0.10:
+                        # Walk back to start of line
+                        line_start = text.rfind('\n', 0, fidx)
+                        cut_pos = line_start + 1 if line_start != -1 else fidx
+                        result = text[:cut_pos].strip()
+                        if len(result) > 5:
+                            return result
+                        break
 
     # Strategy 2: find first line of signature and cut from there
     sig_lines = [l.strip() for l in signature.strip().splitlines() if len(l.strip()) >= 4]
@@ -1669,6 +1685,24 @@ def _cut_source_signature(text: str, signature: str) -> str:
         fidx = text_lower.rfind(first_sig)
         if fidx != -1 and fidx > len(text) * 0.10:
             return text[:fidx].strip()
+
+    # Strategy 2b: try first line with links stripped
+    sig_lines_clean = [_norm(_strip_links(l)) for l in sig_lines if len(_norm(_strip_links(l))) > 5]
+    for scl in sig_lines_clean:
+        fidx = text_clean_norm.rfind(scl[:60])
+        if fidx != -1 and fidx > len(text_clean_norm) * 0.10:
+            # Find corresponding position in original text via key words
+            key_words = [w for w in scl.split() if len(w) > 2][:2]
+            for kw in key_words:
+                kidx = text_lower.rfind(kw)
+                if kidx != -1 and kidx > len(text) * 0.10:
+                    line_start = text.rfind('\n', 0, kidx)
+                    cut_pos = line_start + 1 if line_start != -1 else kidx
+                    result = text[:cut_pos].strip()
+                    if len(result) > 5:
+                        return result
+                    break
+            break
 
     # Strategy 3: find ANY signature line and cut from the earliest match in the tail
     best_idx = -1
@@ -1681,25 +1715,32 @@ def _cut_source_signature(text: str, signature: str) -> str:
     if best_idx >= 0:
         return text[:best_idx].strip()
 
-    # Strategy 4: remove trailing lines that match any sig fragment
-    lines = text.strip().splitlines()
-    sig_words = set(w for l in sig_lines for w in l.lower().split() if len(w) > 4)
-    cut_from = len(lines)
-    for i in range(len(lines) - 1, max(-1, len(lines) - 8), -1):
-        line = lines[i].strip().lower()
-        if not line:
-            cut_from = i
-            continue
-        line_words = set(line.split())
-        overlap = line_words & sig_words
-        if len(overlap) >= max(1, len(sig_words) * 0.3):
-            cut_from = i
-        else:
-            break
-    if cut_from < len(lines):
-        result = '\n'.join(lines[:cut_from]).strip()
-        if len(result) > 5:
-            return result
+    # Strategy 4: remove trailing lines by word overlap (works even after link mangling)
+    sig_all_words = set()
+    for sl in sig_lines:
+        cleaned = _strip_links(sl)
+        sig_all_words.update(w.lower() for w in _r.findall(r'[\w]{2,}', cleaned) if len(w) > 2)
+    if sig_all_words:
+        lines = text.strip().splitlines()
+        cut_from = len(lines)
+        for i in range(len(lines) - 1, max(-1, len(lines) - 8), -1):
+            line_plain = _r.sub(r'<[^>]+>', '', lines[i]).strip().lower()
+            if not line_plain:
+                cut_from = i
+                continue
+            line_words = set(w for w in _r.findall(r'[\w]{2,}', line_plain) if len(w) > 2)
+            if not line_words:
+                cut_from = i
+                continue
+            overlap = line_words & sig_all_words
+            if len(overlap) / len(line_words) >= 0.3:
+                cut_from = i
+            else:
+                break
+        if cut_from < len(lines):
+            result = '\n'.join(lines[:cut_from]).strip()
+            if len(result) > 5:
+                return result
 
     return text
 
@@ -1790,12 +1831,13 @@ def _clean_links(text, source_signature: str = ""):
 
     # Step 4: final signature cleanup — match cleaned sig words against remaining lines
     if source_signature:
-        # Build set of significant words from the signature (after stripping links)
+        # Build set of significant words from the signature (after stripping links/HTML)
         sig_clean = _r.sub(r'https?://\S+', '', source_signature)
         sig_clean = _r.sub(r'<a[^>]+>.*?</a>', '', sig_clean)
         sig_clean = _r.sub(r'@[A-Za-z0-9_]{3,}', '', sig_clean)
         sig_clean = _r.sub(r'<[^>]+>', '', sig_clean)
-        sig_words = set(w.lower() for w in _r.findall(r'[\w\U0001f000-\U0001ffff]{2,}', sig_clean))
+        sig_clean = _r.sub(r'\([^)]*\)', '', sig_clean)  # empty parens
+        sig_words = set(w.lower() for w in _r.findall(r'[\w]{2,}', sig_clean) if len(w) > 2)
 
         if sig_words:
             text_lines = text.splitlines()
@@ -1805,13 +1847,17 @@ def _clean_links(text, source_signature: str = ""):
                     text_lines.pop()
                     continue
                 last_plain = _r.sub(r'<[^>]+>', '', last).strip()
-                last_words = set(w.lower() for w in _r.findall(r'[\w\U0001f000-\U0001ffff]{2,}', last_plain))
-                # If >40% of the line's words are from the signature → it's a sig fragment
-                if last_words and len(last_words & sig_words) / len(last_words) > 0.4:
+                last_words = set(w.lower() for w in _r.findall(r'[\w]{2,}', last_plain) if len(w) > 2)
+                if not last_words:
+                    text_lines.pop()
+                    continue
+                # If >=30% of the line's words are from the signature → it's a sig fragment
+                if len(last_words & sig_words) / len(last_words) >= 0.3:
                     text_lines.pop()
                 else:
                     break
             text = '\n'.join(text_lines).strip()
+        # One more pass with the improved _cut_source_signature
         text = _cut_source_signature(text, source_signature)
     return text
 
