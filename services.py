@@ -1207,13 +1207,6 @@ import tempfile as _tempfile
 MEDIA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media_cache")
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-_bot_instance = None
-
-def set_bot_instance(bot):
-    global _bot_instance
-    _bot_instance = bot
-
-
 async def _download_and_get_file_id(client, msg, media_type: str) -> Optional[str]:
     """Download media via Telethon → upload via Bot API → return file_id. No admin chat used."""
     local_path = None
@@ -1733,9 +1726,9 @@ def _clean_links(text, source_signature: str = ""):
     # Delete: lines that START with @username/link, or where removing promo leaves < 15 chars
     # Keep: lines with real content that happen to mention someone inline
     promo_re   = _r.compile(r't\.me/|telegram\.me/|@[A-Za-z0-9_]{3,}|https?://', _r.I)
-    start_promo= _r.compile(r'^\\s*(?:@[A-Za-z0-9_]{3,}|https?://|t\.me/|telegram\.me/)', _r.I)
+    start_promo= _r.compile(r'^\s*(?:@[A-Za-z0-9_]{3,}|https?://|t\.me/|telegram\.me/)', _r.I)
     _strip_tag = lambda s: _r.sub(r'<[^>]+>', '', s).strip()
-    _rm_promo  = lambda s: _r.sub(r'(?:<a[^>]+>.*?</a>|https?://\\S+|@[A-Za-z0-9_]{3,})', '', s).strip()
+    _rm_promo  = lambda s: _r.sub(r'(?:<a[^>]+>.*?</a>|https?://\S+|@[A-Za-z0-9_]{3,})', '', s).strip()
     lines_in = text.splitlines()
     keep = [True] * len(lines_in)
     for i, line in enumerate(lines_in):
@@ -2335,8 +2328,6 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
         log.error("No Telethon session available")
         return 0
     try:
-        pass
-
         TARGET_NEW    = QUEUE_MAX      # fill up to queue max per parse
         FETCH_BATCH   = 50             # скільки брати за один запит
         MAX_FETCH     = 5000           # ліміт — йдемо глибоко поки не наберемо нових
@@ -2348,9 +2339,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             err_str = str(e).lower()
             if "private" in err_str or "invite" in err_str or "join" in err_str or "forbidden" in err_str:
                 log.warning(f"Source @{source['username']}: private/restricted — skipping")
-            else:
-                err_s = str(e).lower()
-            if any(x in err_s for x in ("banned", "blocked", "deactivated", "account_banned", "flood")):
+            elif any(x in err_str for x in ("banned", "blocked", "deactivated", "account_banned", "flood")):
                 log.error(f"  Session error during parse: {e} — account may be banned/flooded")
                 if _bot_instance and ADMIN_IDS:
                     try:
@@ -3009,7 +2998,6 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
 
 # Per-channel parse locks to prevent concurrent runs
 _parse_locks: dict = {}
-_session_rr_index: int = 0
 
 async def parse_channel_sources(channel_id: int) -> int:
     """Parse all active sources. If all give 0 — dig deeper into history."""
@@ -3208,8 +3196,6 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
     if not client:
         return 0
     try:
-        pass
-
         entity = await client.get_entity(f"@{source['username']}")
         # Fetch OLDER messages (offset_id = oldest we have → returns messages before it)
         batch = await client.get_messages(entity, limit=30, offset_id=oldest_id)

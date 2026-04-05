@@ -666,13 +666,15 @@ async def api_queue_action(request):
         import json as _jspub
         sent = None
         if mt == "album" and post_row.get("media_files_json"):
-            from aiogram.types import InputMediaPhoto, InputMediaVideo
+            from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
             files = _jspub.loads(post_row["media_files_json"])
             media = []
             for i,f in enumerate(files[:10]):
                 caption = _safe_caption(text) if i==0 else None
                 if f["type"]=="photo":
                     media.append(InputMediaPhoto(media=f["file_id"], caption=caption, parse_mode="HTML"))
+                elif f["type"]=="document":
+                    media.append(InputMediaDocument(media=f["file_id"], caption=caption, parse_mode="HTML"))
                 else:
                     media.append(InputMediaVideo(media=f["file_id"], caption=caption, parse_mode="HTML"))
             sent_list = await bot.send_media_group(chat_id, media)
@@ -681,8 +683,13 @@ async def api_queue_action(request):
             sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(text), parse_mode="HTML")
         elif mt in ("video","animation") and mf:
             sent = await bot.send_video(chat_id, mf, caption=_safe_caption(text), parse_mode="HTML")
+        elif mt == "document" and mf:
+            sent = await bot.send_document(chat_id, mf, caption=_safe_caption(text), parse_mode="HTML")
         else:
             if text: sent = await bot.send_message(chat_id, _safe_text(text), parse_mode="HTML")
+        if not sent and not text:
+            log.warning(f"Post {post_id} has no media and no text — skipping")
+            return _j({"ok": False, "error": "empty post"})
         await update_post_status(post_id, "published")
         if sent:
             await save_last_published(post_row["channel_id"], sent.message_id)
@@ -880,7 +887,7 @@ async def api_pay_crypto(request):
         if not any(c["id"]==int(ch_id) for c in channels):
             return _web.json_response({"error":"forbidden"}, status=403)
     # channel_id=0 means "balance top-up" (no specific channel)
-    invoice = await create_invoice(amount, ch_id or 0, days, user["id"])
+    invoice = await create_invoice(amount, int(ch_id) if ch_id else 0, days, user["id"])
     if not invoice: return _web.json_response({"error":"CryptoBot error"}, status=500)
     return _j({"ok":True,"pay_url":invoice["pay_url"],"invoice_id":invoice["invoice_id"],"amount":amount})
 

@@ -570,7 +570,7 @@ async def adm_sessions(cq: CallbackQuery):
     from services import get_session_status as _gss
     import glob as _gl
     sess_files = sorted(f for f in _gl.glob("/app/*.session"))
-    statuses = _gss()
+    statuses = await _gss()
     lines = []
     for sf in sess_files:
         import os as _osa
@@ -649,7 +649,7 @@ async def _do_autopost_publish(cq: CallbackQuery, bot: Bot, post_id: int, ch_id:
     posts = await get_pending_posts(ch_id)
     post = next((p for p in posts if p["id"] == post_id), None)
     if not post:
-        await bot.send_message(cq.from_user.id, uts(await _ul(cq.from_user.id), "pub_post_not_found"))
+        await bot.send_message(cq.from_user.id, uts(await _ul(cq.from_user.id), "pub_post_not_found"), parse_mode=ParseMode.HTML)
         return
 
     if post.get("media_type") and not post.get("media_file_id"):
@@ -710,7 +710,8 @@ async def _do_autopost_publish(cq: CallbackQuery, bot: Bot, post_id: int, ch_id:
     except Exception as e:
         log.error(f"ap_do publish error ch={ch_id} post={post_id}: {e}")
         await bot.send_message(cq.from_user.id,
-                               uts(await _ul(cq.from_user.id), "pub_error").format(err=e))
+                               uts(await _ul(cq.from_user.id), "pub_error").format(err=e),
+                               parse_mode=ParseMode.HTML)
 
 
 @router.callback_query(F.data.startswith("ap_skip:"))
