@@ -1389,19 +1389,11 @@ def _strip_footer_lines(text: str) -> str:
     - Any line containing t.me/ link (including with surrounding text like "Читай в @channel")
     - Any line that is only @username
     - Any bare https:// URL line
-    - Lines with promo keywords (ПОДПИСАТЬСЯ, БУНКЕР, subscribe, etc.)
-    - Short lines (<=60 chars) after a promo line was already removed
+    - Short lines (<=60 chars) after a link-line was already removed
     """
     import re as _r
-    _PROMO_KW_RE = _r.compile(
-        r'подписаться|підписатись|subscribe|подписка|підписка|'
-        r'бункер|наш канал|наш чат|join us|follow us|'
-        r'мы в max|ми в max|читай|читайте|'
-        r'👉\s*(?:подпис|підпис|subscri|начать|join|follow)',
-        _r.IGNORECASE
-    )
     lines = text.strip().splitlines()
-    removed_promo = False
+    removed_link = False
     while lines:
         s = _r.sub(r'<[^>]+>', '', lines[-1]).strip()
         raw_line = lines[-1]
@@ -1412,12 +1404,12 @@ def _strip_footer_lines(text: str) -> str:
             or _r.fullmatch(r'@[A-Za-z0-9_]{3,}', s) # only @username
             or _r.fullmatch(r'https?://\S+', s)      # only URL
         )
-        is_promo_kw = bool(_PROMO_KW_RE.search(s))
-        # Also remove short line after a promo line was removed (e.g. "Більше новин 👇")
-        is_short_after_promo = removed_promo and len(s) <= 60
-        if is_link_line or is_promo_kw or is_short_after_promo:
+        # Also remove short line after a link line was removed (e.g. "Більше новин 👇")
+        is_short_after_link = removed_link and len(s) <= 60
+        if is_link_line or is_short_after_link:
             lines.pop()
-            removed_promo = True
+            if is_link_line:
+                removed_link = True
         else:
             break
     return "\n".join(lines).strip()
@@ -1713,11 +1705,12 @@ def _cut_source_signature(text: str, signature: str) -> str:
 
 def _clean_links(text, source_signature: str = ""):
     """
+    Step 0: Cut source-specific signature FIRST (while text still has full links intact).
     Step 1: Remove ENTIRE lines that contain t.me/, @username, https://.
             Also remove the line BEFORE if it ends with colon (intro label).
     Step 2: Remove remaining inline promo <a href> tags.
     Step 3: Remove remaining bare https:// and @usernames inline.
-    Step 4: Cut source-specific signature.
+    Step 4: Final signature cleanup pass.
     """
     import re as _r
 
@@ -1729,6 +1722,27 @@ def _clean_links(text, source_signature: str = ""):
         "discord.gg/", "discord.com/invite/",
         "whatsapp.com/", "wa.me/", "linktr.ee/", "taplink.cc/",
     )
+
+    # Step 0: cut source-specific signature BEFORE link removal (text still has full links — easier to match)
+    if source_signature:
+        text = _cut_source_signature(text, source_signature)
+        sig_lines = [l.strip() for l in source_signature.strip().splitlines() if l.strip()]
+        text_lines = text.splitlines()
+        while text_lines:
+            last = text_lines[-1].strip()
+            if not last:
+                text_lines.pop()
+                continue
+            last_plain = _r.sub(r'<[^>]+>', '', last).strip()
+            is_sig = any(
+                sig_l.lower() in last_plain.lower() or last_plain.lower() in sig_l.lower()
+                for sig_l in sig_lines if len(sig_l) > 3
+            )
+            if is_sig:
+                text_lines.pop()
+            else:
+                break
+        text = '\n'.join(text_lines).strip()
 
     # Step 1: remove promo lines
     # Delete: lines that START with @username/link, or where removing promo leaves < 15 chars
@@ -1772,44 +1786,32 @@ def _clean_links(text, source_signature: str = ""):
     text = _r.sub(r'@[A-Za-z0-9_]{3,}', '', text)
     text = _r.sub(r'[ \t]{2,}', ' ', text)
     text = _r.sub(r'\n{3,}', '\n\n', text)
-    # Step 3b: remove broken promo fragments (e.g. after link removal leaves "🔞 БУЖЕСТЬ, ВОЙНА...")
-    _promo_frag_re = _r.compile(
-        r'подписаться|підписатись|subscribe|бункер|'
-        r'👉\s*(?:подпис|підпис|subscri|начать|join|follow)|'
-        r'📲\s*мы в|📲\s*ми в|мы в max|ми в max',
-        _r.IGNORECASE
-    )
-    frag_lines = text.splitlines()
-    frag_keep = []
-    for fl in frag_lines:
-        plain_fl = _r.sub(r'<[^>]+>', '', fl).strip()
-        if _promo_frag_re.search(plain_fl) and len(plain_fl) < 80:
-            continue  # skip short promo fragment lines
-        frag_keep.append(fl)
-    text = "\n".join(frag_keep)
     text = _strip_footer_lines(text).strip()
 
-    # Step 4: cut source-specific signature - simple line removal
+    # Step 4: final signature cleanup — match cleaned sig words against remaining lines
     if source_signature:
-        sig_lines = [l.strip() for l in source_signature.strip().splitlines() if l.strip()]
-        # Remove matching lines from end of text
-        text_lines = text.splitlines()
-        while text_lines:
-            last = text_lines[-1].strip()
-            if not last:
-                text_lines.pop()
-                continue
-            # Check if last line matches any signature line (case-insensitive, partial match)
-            is_sig = any(
-                sig_l.lower() in last.lower() or last.lower() in sig_l.lower()
-                for sig_l in sig_lines if len(sig_l) > 3
-            )
-            if is_sig:
-                text_lines.pop()
-            else:
-                break
-        text = '\n'.join(text_lines).strip()
-        # Also try rfind approach
+        # Build set of significant words from the signature (after stripping links)
+        sig_clean = _r.sub(r'https?://\S+', '', source_signature)
+        sig_clean = _r.sub(r'<a[^>]+>.*?</a>', '', sig_clean)
+        sig_clean = _r.sub(r'@[A-Za-z0-9_]{3,}', '', sig_clean)
+        sig_clean = _r.sub(r'<[^>]+>', '', sig_clean)
+        sig_words = set(w.lower() for w in _r.findall(r'[\w\U0001f000-\U0001ffff]{2,}', sig_clean))
+
+        if sig_words:
+            text_lines = text.splitlines()
+            while text_lines:
+                last = text_lines[-1].strip()
+                if not last:
+                    text_lines.pop()
+                    continue
+                last_plain = _r.sub(r'<[^>]+>', '', last).strip()
+                last_words = set(w.lower() for w in _r.findall(r'[\w\U0001f000-\U0001ffff]{2,}', last_plain))
+                # If >40% of the line's words are from the signature → it's a sig fragment
+                if last_words and len(last_words & sig_words) / len(last_words) > 0.4:
+                    text_lines.pop()
+                else:
+                    break
+            text = '\n'.join(text_lines).strip()
         text = _cut_source_signature(text, source_signature)
     return text
 
