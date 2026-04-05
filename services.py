@@ -1389,11 +1389,19 @@ def _strip_footer_lines(text: str) -> str:
     - Any line containing t.me/ link (including with surrounding text like "Читай в @channel")
     - Any line that is only @username
     - Any bare https:// URL line
-    - Short lines (<=60 chars) after a link-line was already removed
+    - Lines with promo keywords (ПОДПИСАТЬСЯ, БУНКЕР, subscribe, etc.)
+    - Short lines (<=60 chars) after a promo line was already removed
     """
     import re as _r
+    _PROMO_KW_RE = _r.compile(
+        r'подписаться|підписатись|subscribe|подписка|підписка|'
+        r'бункер|наш канал|наш чат|join us|follow us|'
+        r'мы в max|ми в max|читай|читайте|'
+        r'👉\s*(?:подпис|підпис|subscri|начать|join|follow)',
+        _r.IGNORECASE
+    )
     lines = text.strip().splitlines()
-    removed_link = False
+    removed_promo = False
     while lines:
         s = _r.sub(r'<[^>]+>', '', lines[-1]).strip()
         raw_line = lines[-1]
@@ -1404,12 +1412,12 @@ def _strip_footer_lines(text: str) -> str:
             or _r.fullmatch(r'@[A-Za-z0-9_]{3,}', s) # only @username
             or _r.fullmatch(r'https?://\S+', s)      # only URL
         )
-        # Also remove short line after a link line was removed (e.g. "Більше новин 👇")
-        is_short_after_link = removed_link and len(s) <= 60
-        if is_link_line or is_short_after_link:
+        is_promo_kw = bool(_PROMO_KW_RE.search(s))
+        # Also remove short line after a promo line was removed (e.g. "Більше новин 👇")
+        is_short_after_promo = removed_promo and len(s) <= 60
+        if is_link_line or is_promo_kw or is_short_after_promo:
             lines.pop()
-            if is_link_line:
-                removed_link = True
+            removed_promo = True
         else:
             break
     return "\n".join(lines).strip()
@@ -1764,6 +1772,21 @@ def _clean_links(text, source_signature: str = ""):
     text = _r.sub(r'@[A-Za-z0-9_]{3,}', '', text)
     text = _r.sub(r'[ \t]{2,}', ' ', text)
     text = _r.sub(r'\n{3,}', '\n\n', text)
+    # Step 3b: remove broken promo fragments (e.g. after link removal leaves "🔞 БУЖЕСТЬ, ВОЙНА...")
+    _promo_frag_re = _r.compile(
+        r'подписаться|підписатись|subscribe|бункер|'
+        r'👉\s*(?:подпис|підпис|subscri|начать|join|follow)|'
+        r'📲\s*мы в|📲\s*ми в|мы в max|ми в max',
+        _r.IGNORECASE
+    )
+    frag_lines = text.splitlines()
+    frag_keep = []
+    for fl in frag_lines:
+        plain_fl = _r.sub(r'<[^>]+>', '', fl).strip()
+        if _promo_frag_re.search(plain_fl) and len(plain_fl) < 80:
+            continue  # skip short promo fragment lines
+        frag_keep.append(fl)
+    text = "\n".join(frag_keep)
     text = _strip_footer_lines(text).strip()
 
     # Step 4: cut source-specific signature - simple line removal

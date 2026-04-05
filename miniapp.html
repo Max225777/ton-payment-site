@@ -1669,7 +1669,7 @@ function renderQ(){
     d.innerHTML='';
     if(thumbHtml){var _th=document.createElement('div');_th.innerHTML=thumbHtml;d.appendChild(_th.firstChild||_th);}
     var _qm=document.createElement('div');_qm.className='q-media';_qm.innerHTML=miLabel+(p.source?' · <b>@'+_escHtml(p.source)+'</b>':'');d.appendChild(_qm);
-    var _qt=document.createElement('div');_qt.className='q-text';if(p.text){_qt.textContent=p.text;}else{_qt.innerHTML='<i style="color:var(--mu)">'+t('media_only_label')+'</i>';}d.appendChild(_qt);
+    var _qt=document.createElement('div');_qt.className='q-text';if(p.text){_qt.innerHTML=_safeHtml(p.text);}else{_qt.innerHTML='<i style="color:var(--mu)">'+t('media_only_label')+'</i>';}d.appendChild(_qt);
     if(Q_POSTBTN&&Q_POSTBTN.url){var _pb=document.createElement('span');_pb.style.cssText='display:block;margin-top:8px;font-size:13px';var _pba=document.createElement('a');_pba.href=Q_POSTBTN.url;_pba.style.cssText='color:var(--acc2);font-weight:700;text-decoration:none';_pba.textContent=(Q_POSTBTN.label||Q_POSTBTN.url);_pba.onclick=function(e){e.preventDefault();if(window.Telegram&&window.Telegram.WebApp)Telegram.WebApp.openLink(Q_POSTBTN.url);};_pb.appendChild(_pba);d.appendChild(_pb);}
     var _qa=document.createElement('div');_qa.className='q-actions';_qa.innerHTML='<button class="q-btn q-ok" onclick="qAct('+p.id+',\'publish\',this)">'+t('publish')+'</button><button class="q-btn q-sk" onclick="qAct('+p.id+',\'skip\',this)">'+t('skip')+'</button>';d.appendChild(_qa);
     wrap.appendChild(d);
@@ -2187,6 +2187,7 @@ function renderMp(list){
 }
 function _fmtNum(n){if(n>=1000000)return (n/1000000).toFixed(1)+'M';if(n>=1000)return (n/1000).toFixed(n>=10000?0:1)+'K';return n.toString();}
 function _escHtml(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function _safeHtml(s){if(!s)return '';var ok='b,i,u,s,code,pre,em,strong'.split(',');return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/&lt;(\/?)(b|i|u|s|code|pre|em|strong)&gt;/gi,function(m,sl,tag){return '<'+sl+tag.toLowerCase()+'>';}).replace(/\n/g,'<br>');}
 
 // ── VIDEO OVERLAY ──────────────────────────────────────────────────────────
 
