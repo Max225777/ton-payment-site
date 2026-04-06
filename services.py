@@ -1623,50 +1623,82 @@ async def _get_source_signature(source_id: int) -> str:
 
 
 def _cut_source_signature(text: str, signature: str) -> str:
-    """Remove promo signature from text. Simple exact matching."""
+    """Remove promo signature from text. Simple line-by-line matching.
+    Strips HTML tags before comparing (signature is plain text, post has HTML)."""
     if not signature or not text:
         return text
     import re as _r
 
-    # Normalize only whitespace: \xa0 → space, collapse multiple spaces
+    # Normalize whitespace
     def _ws(s):
         return s.replace('\xa0', ' ').replace('\u200b', '')
+
+    # Strip HTML tags + URLs + @mentions + junk chars for comparison
+    def _plain(s):
+        s = _r.sub(r'<a[^>]+>.*?</a>', '', s, flags=_r.DOTALL)  # remove full <a> tags
+        s = _r.sub(r'<[^>]+>', '', s)
+        s = _r.sub(r'https?://\S+', '', s)
+        s = _r.sub(r'@[A-Za-z0-9_]{3,}', '', s)
+        s = _r.sub(r'[()|\-]', ' ', s)  # parens, pipes, dashes → space
+        s = _r.sub(r'\s+', ' ', s)
+        return s.strip()
 
     text = _ws(text)
     sig = _ws(signature).strip()
 
-    # 1) Try full signature as one block (case-insensitive)
-    idx = text.lower().rfind(sig.lower())
-    if idx != -1 and idx > len(text) * 0.05:
-        return text[:idx].strip()
-
-    # 2) Line-by-line: find the first sig line in the text, cut from there
-    #    (handles cases where signature lines are separated by extra newlines)
-    sig_lines = [l.strip() for l in sig.splitlines() if len(l.strip()) >= 3]
+    # Build set of signature lines (plain text, lowered)
+    sig_lines = [l.strip().lower() for l in sig.splitlines() if len(l.strip()) >= 3]
     if not sig_lines:
         return text
 
-    # Find the FIRST sig line that appears in the lower half of the text
-    first_sig_line = sig_lines[0].lower()
-    fidx = text.lower().rfind(first_sig_line)
-    if fidx != -1 and fidx > len(text) * 0.05:
-        return text[:fidx].strip()
+    # Work line-by-line from the bottom: find trailing lines that match sig
+    text_lines = text.splitlines()
+    cut_from = len(text_lines)
 
-    # 3) If first line not found, try each sig line — cut from the earliest match in the tail
-    half = len(text) // 2
-    best = -1
-    for sl in sig_lines:
-        pos = text.lower().rfind(sl.lower())
-        if pos != -1 and pos >= half:
-            if best < 0 or pos < best:
-                best = pos
-    if best >= 0:
-        # Walk back to start of line
-        nl = text.rfind('\n', 0, best)
-        cut = nl + 1 if nl != -1 else best
-        result = text[:cut].strip()
+    for i in range(len(text_lines) - 1, -1, -1):
+        line_plain = _plain(text_lines[i]).strip().lower()
+        if not line_plain:
+            cut_from = i  # skip empty lines
+            continue
+        # Check if this line matches any signature line
+        matched = False
+        for sl in sig_lines:
+            if sl in line_plain or line_plain in sl:
+                matched = True
+                break
+        if matched:
+            cut_from = i
+        else:
+            break
+
+    if cut_from < len(text_lines):
+        result = '\n'.join(text_lines[:cut_from]).strip()
         if len(result) > 5:
             return result
+
+    # Fallback: try full sig match on plain text, then cut from that position
+    text_plain = _plain(text).lower()
+    sig_plain = _plain(sig).lower()
+
+    # Try full block match
+    idx = text_plain.rfind(sig_plain)
+    if idx != -1 and idx > len(text_plain) * 0.05:
+        # Find corresponding line in original text
+        prefix_newlines = text_plain[:idx].count('\n')
+        if prefix_newlines < len(text_lines):
+            result = '\n'.join(text_lines[:prefix_newlines]).strip()
+            if len(result) > 5:
+                return result
+
+    # Try first sig line match
+    if sig_lines:
+        idx = text_plain.rfind(sig_lines[0])
+        if idx != -1 and idx > len(text_plain) * 0.05:
+            prefix_newlines = text_plain[:idx].count('\n')
+            if prefix_newlines < len(text_lines):
+                result = '\n'.join(text_lines[:prefix_newlines]).strip()
+                if len(result) > 5:
+                    return result
 
     return text
 
