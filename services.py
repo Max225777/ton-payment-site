@@ -1878,11 +1878,18 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
                 # Build rephrase prompt with explicit signature removal instruction
                 _rephrase_prompt = REPHRASE_PROMPT
                 if source_signature:
-                    _sig_lines = source_signature.strip()
+                    import re as _re_sig
+                    # Build clean version of sig for AI (strip URLs/HTML to show just the words)
+                    _sig_clean = _re_sig.sub(r'<a[^>]+>.*?</a>', '', source_signature)
+                    _sig_clean = _re_sig.sub(r'<[^>]+>', '', _sig_clean)
+                    _sig_clean = _re_sig.sub(r'https?://\S+', '', _sig_clean)
+                    _sig_clean = _re_sig.sub(r'@[A-Za-z0-9_]{3,}', '', _sig_clean)
+                    _sig_clean = _re_sig.sub(r'\s+', ' ', _sig_clean).strip()
                     _rephrase_prompt = (
                         REPHRASE_PROMPT + "\n"
-                        f"7. MANDATORY: The following text is a promo signature — REMOVE IT COMPLETELY from the output, do not include it in any form:\n"
-                        f"SIGNATURE TO REMOVE: {_sig_lines}"
+                        f"7. CRITICAL: DELETE the following promo/signature lines from the text COMPLETELY. "
+                        f"Do NOT rephrase them, do NOT include them — just DELETE them from output:\n"
+                        f"\"{_sig_clean}\""
                     )
                 rephrased = await _call_ai(_rephrase_prompt, cleaned)
                 log.info(f"  [S5] rephrase END: {repr(_plain(rephrased)[-120:])}")
