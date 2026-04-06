@@ -1559,13 +1559,19 @@ async def _detect_source_signature(source_id: int, messages: list) -> str:
                 best = candidate
                 best_count = score
 
-    # Try 2-line combos
+    # Try 2-line combos (strip URLs before comparing for better matching)
+    def _strip_urls(s):
+        s = _r.sub(r'https?://\S+', '', s)
+        s = _r.sub(r'\([^)]*\)', '', s)  # (link) → empty
+        return _r.sub(r'\s+', ' ', s).strip()
+
     for s in samples:
         last2 = get_last_lines(s, 2)
         if len(last2) == 2:
             combo = '\n'.join(last2)
-            if len(combo) >= 8:
-                cnt = sum(1 for ss in samples if combo in ss)
+            combo_clean = _strip_urls(combo)
+            if len(combo_clean) >= 8:
+                cnt = sum(1 for ss in samples if _strip_urls('\n'.join(get_last_lines(ss, 2))) == combo_clean)
                 is_promo = bool(PROMO_RE.search(combo))
                 if cnt >= threshold - 1 and (is_promo or cnt >= threshold):
                     if len(combo) > len(best) or (is_promo and cnt >= threshold - 1):
@@ -1623,7 +1629,7 @@ async def _get_source_signature(source_id: int) -> str:
 
 
 def _cut_source_signature(text: str, signature: str) -> str:
-    """Remove promo signature from text. Simple line-by-line matching.
+    """Remove promo signature from text. Line-by-line matching + promo cleanup.
     Strips HTML tags before comparing (signature is plain text, post has HTML)."""
     if not signature or not text:
         return text
@@ -1643,17 +1649,39 @@ def _cut_source_signature(text: str, signature: str) -> str:
         s = _r.sub(r'\s+', ' ', s)
         return s.strip()
 
+    # Check if a line looks like promo (not real content)
+    _PROMO_WORDS = {'подписаться', 'подписывайся', 'подписывайтесь', 'подписка',
+                    'subscribe', 'follow', 'join', 'жесть', 'бункер', '18+',
+                    'подписатись', 'підписатись', 'підписуйся', 'канал', 'channel'}
+    def _is_promo_line(line_text):
+        """Check if line is promotional (short, emoji-heavy, promo words)."""
+        plain = _plain(line_text).lower()
+        if not plain or len(plain) < 3:
+            return True  # empty = remove
+        if len(plain) > 120:
+            return False  # long line = real content
+        # Check for promo words
+        words = set(_r.findall(r'[\w]+', plain))
+        if words & _PROMO_WORDS:
+            return True
+        # Line is very short and starts with emoji
+        if len(plain) < 60 and _r.match(r'[^\w\s]', plain):
+            return True
+        return False
+
     text = _ws(text)
     sig = _ws(signature).strip()
 
-    # Build set of signature lines (plain text, lowered)
+    # Build set of signature lines (cleaned, lowered)
     sig_lines = [l.strip().lower() for l in sig.splitlines() if len(l.strip()) >= 3]
-    if not sig_lines:
+    sig_lines_clean = [_plain(sl).strip() for sl in sig_lines]
+    if not sig_lines_clean:
         return text
 
     # Work line-by-line from the bottom: find trailing lines that match sig
     text_lines = text.splitlines()
     cut_from = len(text_lines)
+    found_sig = False
 
     for i in range(len(text_lines) - 1, -1, -1):
         line_plain = _plain(text_lines[i]).strip().lower()
@@ -1662,14 +1690,23 @@ def _cut_source_signature(text: str, signature: str) -> str:
             continue
         # Check if this line matches any signature line
         matched = False
-        for sl in sig_lines:
+        for sl in sig_lines_clean:
             if sl in line_plain or line_plain in sl:
                 matched = True
                 break
         if matched:
             cut_from = i
+            found_sig = True
         else:
             break
+
+    # After removing sig lines, also remove adjacent promo lines above
+    if found_sig and cut_from > 0:
+        for i in range(cut_from - 1, max(-1, cut_from - 5), -1):
+            if _is_promo_line(text_lines[i]):
+                cut_from = i
+            else:
+                break
 
     if cut_from < len(text_lines):
         result = '\n'.join(text_lines[:cut_from]).strip()
@@ -1683,7 +1720,6 @@ def _cut_source_signature(text: str, signature: str) -> str:
     # Try full block match
     idx = text_plain.rfind(sig_plain)
     if idx != -1 and idx > len(text_plain) * 0.05:
-        # Find corresponding line in original text
         prefix_newlines = text_plain[:idx].count('\n')
         if prefix_newlines < len(text_lines):
             result = '\n'.join(text_lines[:prefix_newlines]).strip()
@@ -1691,8 +1727,8 @@ def _cut_source_signature(text: str, signature: str) -> str:
                 return result
 
     # Try first sig line match
-    if sig_lines:
-        idx = text_plain.rfind(sig_lines[0])
+    if sig_lines_clean:
+        idx = text_plain.rfind(sig_lines_clean[0])
         if idx != -1 and idx > len(text_plain) * 0.05:
             prefix_newlines = text_plain[:idx].count('\n')
             if prefix_newlines < len(text_lines):
