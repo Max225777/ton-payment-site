@@ -2480,11 +2480,8 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 existing_sig = await _get_source_signature(source["id"])
         source_signature = existing_sig
 
-        # Block parsing until signature is found
         if not source_signature:
-            log.info(f"  @{source['username']}: no signature yet — skipping save until pattern found. Will retry next parse.")
-            await client.disconnect()
-            return 0
+            log.info(f"  @{source['username']}: no promo signature detected — proceeding without signature filter")
 
         log.info(f"Parsing @{source['username']}: {len(messages)} msgs → collecting candidates")
 
