@@ -3838,6 +3838,7 @@ async def get_marketplace_channels() -> list:
             "accept_paid_ads": bool(s.get("accept_paid_ads")),
             "accept_crosspromo": bool(s.get("accept_crosspromo")),
             "contact_username": s.get("contact_username") or "",
+            "channel_link": s.get("channel_link") or "",
             "monetization_info": s.get("monetization_info") or "",
             "photo_url": photo_url,
         })

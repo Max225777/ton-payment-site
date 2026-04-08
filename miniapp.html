@@ -570,6 +570,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div class="sr tap" onclick="prmpt('subscribers_count',t('mp_subs_hint')+' (1000)','s-msubs')"><div class="sr-l"><div class="sr-t" id="chs-subs-t">Підписників</div></div><span class="sr-v" id="s-msubs">—</span></div>
     <div class="sr tap" onclick="prmpt('price_per_post',t('mp_price_hint')+' (5.00)','s-mprice')"><div class="sr-l"><div class="sr-t" id="chs-price-t">Ціна за пост ($)</div></div><span class="sr-v" id="s-mprice">—</span></div>
     <div class="sr tap" onclick="prmpt('contact_username','@username / t.me/username / https://...','s-mcont')"><div class="sr-l"><div class="sr-t" id="chs-contact-t">Контакт</div></div><span class="sr-v" id="s-mcont">—</span></div>
+    <div class="sr tap" onclick="prmpt('channel_link','https://t.me/... або t.me/+invite','s-mlink')"><div class="sr-l"><div class="sr-t" id="chs-link-t">Посилання на канал</div><div class="sr-s" id="chs-link-d">Для приватних каналів — invite link</div></div><span class="sr-v" id="s-mlink">—</span></div>
     <div class="sr tap" onclick="prmpt('monetization_info',t('mp_info_hint'),'s-minfo')"><div class="sr-l"><div class="sr-t" id="chs-minfo-t">Опис / доп. інфо</div></div><span class="sr-v" id="s-minfo">—</span></div>
   </div>
   <div style="height:18px"></div>
@@ -850,6 +851,7 @@ ru:{
   mp_show_in_catalog:'Показать в каталоге', mp_show_in_catalog_desc:'Ваш канал будет виден другим',
   mp_paid_ads_desc:'Принимаю рекламные посты', mp_crosspromo_desc:'Готов к взаимному продвижению',
   mp_price_per_post:'Цена за пост ($)', mp_contact_label:'Контакт (@ или ссылка)', mp_info_label:'Описание / доп. инфо',
+  mp_link_label:'Ссылка на канал', mp_link_hint:'Для приватных каналов — invite-ссылка',
   mp_subs_hint:'Количество подписчиков', mp_price_hint:'Цена за 1 рекламный пост', mp_info_hint:'Описание канала, условия размещения',
   mp_lang:'Язык',
   mp_filter_title:'Фильтры', mp_cat_label:'Тематика', mp_lang_label:'Язык канала',
@@ -999,6 +1001,7 @@ uk:{
   mp_show_in_catalog:'Показати в каталозі', mp_show_in_catalog_desc:'Ваш канал буде видно іншим',
   mp_paid_ads_desc:'Приймаю рекламні пости', mp_crosspromo_desc:'Готовий до взаємного просування',
   mp_price_per_post:'Ціна за пост ($)', mp_contact_label:'Контакт (@ або посилання)', mp_info_label:'Опис / доп. інфо',
+  mp_link_label:'Посилання на канал', mp_link_hint:'Для приватних каналів — invite-посилання',
   mp_subs_hint:'Кількість підписників', mp_price_hint:'Ціна за 1 рекламний пост', mp_info_hint:'Опис каналу, умови розміщення',
   mp_lang:'Мова',
   mp_filter_title:'Фільтри', mp_cat_label:'Тематика', mp_lang_label:'Мова каналу',
@@ -1535,8 +1538,8 @@ function openCHS(id){
   document.getElementById('s-xpromo').checked=!!s.accept_crosspromo;
   const priceEl=document.getElementById('s-price');
   if(priceEl) priceEl.textContent=(CFG.price_per_slot||2).toFixed(0);
-  ['sf','st','sp','sl','spbl','spbu','s-msubs','s-mprice','s-mcont','s-minfo'].forEach((el,i)=>{
-    const keys=['autopost_from','autopost_to','autopost_ppd','channel_lang','postbtn_label','postbtn_url','subscribers_count','price_per_post','contact_username','monetization_info'];
+  ['sf','st','sp','sl','spbl','spbu','s-msubs','s-mprice','s-mcont','s-mlink','s-minfo'].forEach((el,i)=>{
+    const keys=['autopost_from','autopost_to','autopost_ppd','channel_lang','postbtn_label','postbtn_url','subscribers_count','price_per_post','contact_username','channel_link','monetization_info'];
     document.getElementById(el).textContent=s[keys[i]]||'—';
   });
   CUR_S={...s};
@@ -1583,6 +1586,8 @@ function applyCHSLang(){
   document.getElementById('chs-subs-t').textContent=t('mp_subs');
   document.getElementById('chs-price-t').textContent=t('mp_price_per_post');
   document.getElementById('chs-contact-t').textContent=t('mp_contact_label');
+  document.getElementById('chs-link-t').textContent=t('mp_link_label');
+  document.getElementById('chs-link-d').textContent=t('mp_link_hint');
   document.getElementById('chs-minfo-t').textContent=t('mp_info_label');
   var _sb=document.getElementById('save-btn');if(_sb&&!_sb.disabled)_sb.textContent=t('save');
 }
@@ -2171,8 +2176,15 @@ function renderMp(list){
     if(ch.accept_crosspromo) html+='<span style="background:rgba(91,163,255,.12);color:var(--acc2);padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700">'+t('mp_crosspromo')+'</span>';
     html+='</div>';
     if(ch.monetization_info) html+='<div style="font-size:12px;color:var(--mu);line-height:1.5;margin-bottom:8px">'+_escHtml(ch.monetization_info)+'</div>';
-    if(ch.username){
-      html+='<button class="btn" style="width:100%;padding:8px;font-size:12px;font-weight:700;background:var(--acc);border:none;border-radius:10px;color:#fff;margin-bottom:6px" onclick="openTgUrl(\'https://t.me/'+_escHtml(ch.username)+'\')">'+t('mp_open_channel')+'</button>';
+    var chLink='';
+    if(ch.channel_link){
+      chLink=ch.channel_link;
+      if(!chLink.match(/^https?:\/\//)) chLink='https://'+chLink.replace(/^\/+/, '');
+    } else if(ch.username){
+      chLink='https://t.me/'+ch.username;
+    }
+    if(chLink){
+      html+='<button class="btn" style="width:100%;padding:8px;font-size:12px;font-weight:700;background:var(--acc);border:none;border-radius:10px;color:#fff;margin-bottom:6px" onclick="openTgUrl(\''+_escHtml(chLink)+'\')">'+t('mp_open_channel')+'</button>';
     }
     var contact=ch.contact_username||ch.username||'';
     if(contact){
