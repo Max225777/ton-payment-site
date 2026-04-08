@@ -295,6 +295,17 @@ async def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS seen_messages (
+            channel_id    INTEGER NOT NULL,
+            source_id     INTEGER NOT NULL,
+            tg_message_id INTEGER NOT NULL,
+            grouped_id    INTEGER,
+            seen_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (channel_id, source_id, tg_message_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_seen_channel_source
+            ON seen_messages(channel_id, source_id);
+
         CREATE TABLE IF NOT EXISTS user_balances (
             user_id INTEGER PRIMARY KEY,
             balance REAL DEFAULT 0,
@@ -383,6 +394,16 @@ async def init_db():
                 await db.execute(sql)
             except Exception:
                 pass
+
+        # Backfill seen_messages from existing raw_posts so legacy data keeps dedup working
+        try:
+            await db.execute(
+                "INSERT OR IGNORE INTO seen_messages(channel_id, source_id, tg_message_id, grouped_id) "
+                "SELECT channel_id, source_id, tg_message_id, grouped_id FROM raw_posts "
+                "WHERE channel_id IS NOT NULL AND source_id IS NOT NULL AND tg_message_id IS NOT NULL"
+            )
+        except Exception as _be:
+            log.debug(f"seen_messages backfill: {_be}")
 
         await db.commit()
     log.info("DB initialized")
@@ -942,8 +963,55 @@ async def get_last_published(channel_id: int) -> Optional[dict]:
 
 async def post_already_parsed(channel_id: int, source_id: int, tg_message_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        row = await _fetchone(db, "SELECT 1 FROM seen_messages WHERE channel_id=? AND source_id=? AND tg_message_id=?", (channel_id, source_id, tg_message_id))
+        if row:
+            return True
         row = await _fetchone(db, "SELECT id FROM raw_posts WHERE channel_id=? AND source_id=? AND tg_message_id=?", (channel_id, source_id, tg_message_id))
         return row is not None
+
+
+async def mark_messages_seen(channel_id: int, source_id: int, items: list) -> None:
+    """Persistently record parsed tg_message_ids so they never re-appear in the queue.
+
+    items: iterable of (tg_message_id, grouped_id_or_None)
+    """
+    if not items:
+        return
+    rows = [(channel_id, source_id, int(mid), (int(gid) if gid else None)) for mid, gid in items if mid]
+    if not rows:
+        return
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.executemany(
+            "INSERT OR IGNORE INTO seen_messages(channel_id, source_id, tg_message_id, grouped_id) VALUES(?,?,?,?)",
+            rows,
+        )
+        await db.commit()
+
+
+async def load_seen_message_ids(channel_id: int, source_id: int) -> tuple:
+    """Return (set of tg_message_ids, set of grouped_ids) already seen for this channel+source."""
+    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        cur = await db.execute(
+            "SELECT tg_message_id, grouped_id FROM seen_messages WHERE channel_id=? AND source_id=?",
+            (channel_id, source_id),
+        )
+        rows = await cur.fetchall()
+        # Also include any ids still live in raw_posts (legacy rows from before seen_messages existed)
+        cur2 = await db.execute(
+            "SELECT tg_message_id, grouped_id FROM raw_posts WHERE channel_id=? AND source_id=?",
+            (channel_id, source_id),
+        )
+        rows2 = await cur2.fetchall()
+    ids: set = set()
+    gids: set = set()
+    for r in list(rows) + list(rows2):
+        if r[0] is not None:
+            ids.add(int(r[0]))
+        if r[1] is not None:
+            gids.add(int(r[1]))
+    return ids, gids
 
 
 async def save_raw_post(channel_id: int, source_id: int, tg_message_id: int,
@@ -956,6 +1024,11 @@ async def save_raw_post(channel_id: int, source_id: int, tg_message_id: int,
             "media_file_id, thumbnail_file_id, media_files_json, original_url) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (channel_id, source_id, tg_message_id, grouped_id, text, media_type,
              media_file_id, thumbnail_file_id, media_files_json, original_url)
+        )
+        # Persistent dedup record (survives midnight queue reset)
+        await db.execute(
+            "INSERT OR IGNORE INTO seen_messages(channel_id, source_id, tg_message_id, grouped_id) VALUES(?,?,?,?)",
+            (channel_id, source_id, tg_message_id, grouped_id)
         )
         await db.commit()
         if cur.lastrowid:
@@ -2387,17 +2460,8 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
         # Перевіряємо чи є вже пости в черзі для цього джерела
         pending_count = await count_pending_posts(channel_id)
 
-        # Загружаємо вже парсовані ID одним запитом ДО fetch
-        async with aiosqlite.connect(DB_PATH, timeout=30) as _db:
-            await _db.execute("PRAGMA journal_mode=WAL")
-            _cur = await _db.execute(
-                "SELECT rp.tg_message_id FROM raw_posts rp "
-                "JOIN sources s ON s.id=rp.source_id "
-                "WHERE rp.channel_id=? AND s.username=?",
-                (channel_id, source["username"])
-            )
-            _rows = await _cur.fetchall()
-        parsed_ids: set = {r[0] for r in _rows}
+        # Загружаємо вже парсовані ID з persistent seen_messages (не чиститься на півночі)
+        parsed_ids, parsed_grouped_ids = await load_seen_message_ids(channel_id, source["id"])
         log.info(f"  already parsed: {len(parsed_ids)} for @{source['username']}")
 
         # Завантажуємо від НАЙНОВІШИХ до старіших (дефолтний порядок Telegram)
@@ -2644,6 +2708,8 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                     media_file_id=media_file_id, media_files_json=media_files_json,
                     original_url=orig_url,
                     thumbnail_file_id="", grouped_id=g_id)
+                # Persistent dedup record — survives midnight cleanup
+                await mark_messages_seen(channel_id, source["id"], [(msg_id, g_id)])
                 # For media-only posts (no text): save directly as pending, skip AI
                 if not (text or "").strip():
                     await save_processed_post(raw_id, "", mode="sanitize")
@@ -2658,6 +2724,13 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 added += 1
                 log.info(f"  ✓ saved {msg_id} media={media_type} len={len(text or '')}")
         # end parallel processing
+        # Mark ALL fetched messages as seen — even filtered/skipped ones — so we never
+        # re-check them on subsequent parses (prevents duplicates after midnight reset).
+        try:
+            _seen_batch = [(m.id, getattr(m, 'grouped_id', None)) for m in messages if getattr(m, 'id', None)]
+            await mark_messages_seen(channel_id, source["id"], _seen_batch)
+        except Exception as _se:
+            log.debug(f"  mark_messages_seen (bulk): {_se}")
     except Exception as e:
         log.error(f"Parse @{source['username']} error: {e}")
     finally:
@@ -2697,25 +2770,8 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
 
-        async with aiosqlite.connect(DB_PATH, timeout=30) as _db:
-            await _db.execute("PRAGMA journal_mode=WAL")
-            _cur = await _db.execute(
-                "SELECT rp.tg_message_id FROM raw_posts rp "
-                "JOIN sources s ON s.id=rp.source_id "
-                "WHERE rp.channel_id=? AND s.username=?",
-                (channel_id, source["username"])
-            )
-            _rows = await _cur.fetchall()
-            # Also load grouped_ids of already-parsed albums to prevent re-downloading album members
-            _cur2 = await _db.execute(
-                "SELECT rp.grouped_id FROM raw_posts rp "
-                "JOIN sources s ON s.id=rp.source_id "
-                "WHERE rp.channel_id=? AND s.username=? AND rp.grouped_id IS NOT NULL",
-                (channel_id, source["username"])
-            )
-            _rows2 = await _cur2.fetchall()
-        parsed_ids: set = {r[0] for r in _rows}
-        parsed_grouped_ids: set = {r[0] for r in _rows2}  # album groups already processed
+        # Persistent dedup via seen_messages (survives midnight cleanup)
+        parsed_ids, parsed_grouped_ids = await load_seen_message_ids(channel_id, source["id"])
 
         TARGET_NEW  = limit
         FETCH_BATCH = 50
@@ -2854,6 +2910,13 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
                 if r is not None:
                     results.append(r)
 
+        # Mark every fetched message as seen so we never reparse it (persists past midnight cleanup)
+        try:
+            _seen_batch = [(m.id, getattr(m, 'grouped_id', None)) for m in all_messages if getattr(m, 'id', None)]
+            await mark_messages_seen(channel_id, source["id"], _seen_batch)
+        except Exception as _se:
+            log.debug(f"  mark_messages_seen (collect bulk): {_se}")
+
     except Exception as e:
         log.error(f"_parse_source_collect @{source['username']}: {e}")
     finally:
@@ -2872,19 +2935,13 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
 
     async with aiosqlite.connect(DB_PATH, timeout=30) as _db:
         _cur = await _db.execute(
-            "SELECT MIN(tg_message_id) FROM raw_posts WHERE channel_id=? AND source_id=?",
+            "SELECT MIN(tg_message_id) FROM seen_messages WHERE channel_id=? AND source_id=?",
             (channel_id, source["id"])
         )
         row = await _cur.fetchone()
-        _cur2 = await _db.execute(
-            "SELECT rp.tg_message_id FROM raw_posts rp "
-            "JOIN sources s ON s.id=rp.source_id "
-            "WHERE rp.channel_id=? AND s.username=?",
-            (channel_id, source["username"])
-        )
-        _rows2 = await _cur2.fetchall()
     oldest_id = row[0] if row and row[0] else 0
-    published_ids: set = {r[0] for r in _rows2}
+    # Full persistent dedup set
+    published_ids, _ = await load_seen_message_ids(channel_id, source["id"])
 
     if oldest_id == 0:
         return []
