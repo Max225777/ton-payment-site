@@ -526,9 +526,26 @@ async def api_channel_add(request):
             if member.status not in ("administrator","creator"):
                 return _web.json_response({"error":"bot_not_admin",
                     "message": f"Додайте @{(await _bot_instance.me()).username} як адміністратора"}, status=400)
-        # Check duplicate by chat_id
+        # Check duplicate by chat_id (current user)
         if any(c.get("chat_id")==chat_id for c in channels):
             return _web.json_response({"error":"already_added","message":"Цей канал вже додано"}, status=400)
+        # Check if channel is owned by ANOTHER user globally
+        import aiosqlite as _aio
+        from services import DB_PATH as _DBP
+        async with _aio.connect(_DBP, timeout=10) as _db:
+            _db.row_factory = _aio.Row
+            _cur = await _db.execute(
+                "SELECT c.id, u.telegram_id FROM channels c "
+                "JOIN users u ON u.id=c.user_id "
+                "WHERE c.chat_id=? LIMIT 1",
+                (chat_id,)
+            )
+            _owner_row = await _cur.fetchone()
+        if _owner_row and _owner_row["telegram_id"] != tg_id:
+            return _web.json_response({
+                "error": "owned_by_other",
+                "message": "Цей канал вже підключив інший користувач. Зверніться до поточного власника щоб він видалив канал зі свого акаунту."
+            }, status=409)
     except Exception as e:
         return _web.json_response({"error":"channel_error","message":str(e)}, status=400)
     category = body.get("category", "general")
