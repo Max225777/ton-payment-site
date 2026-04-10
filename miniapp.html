@@ -534,10 +534,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ai-t">AI переработка</div><div class="sr-s" id="chs-ai-d">Перефразирование текстов</div></div><label class="tg"><input type="checkbox" id="s-ai" onchange="onTgl('_ai',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-mo-t">Только с медиа</div><div class="sr-s" id="chs-mo-d">Собирать посты только с фото/видео</div></div><label class="tg"><input type="checkbox" id="s-mo" onchange="onTgl('media_only',this);if(this.checked)document.getElementById('s-to').checked=false,CUR_S.text_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to-t">Только текст</div><div class="sr-s" id="chs-to-d">Собирать посты только с текстом (без медиа)</div></div><label class="tg"><input type="checkbox" id="s-to" onchange="onTgl('text_only',this);if(this.checked)document.getElementById('s-mo').checked=false,CUR_S.media_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
-    <div class="sr tap" onclick="prmpt('autopost_from',t('time_from')+' (09:00)','sf')"><div class="sr-l"><div class="sr-t" id="chs-from-t">Начало</div></div><span class="sr-v" id="sf">—</span></div>
-    <div class="sr tap" onclick="prmpt('autopost_to',t('time_to')+' (22:00)','st')"><div class="sr-l"><div class="sr-t" id="chs-to2-t">Конец</div></div><span class="sr-v" id="st">—</span></div>
-    <div class="sr tap" onclick="prmpt('autopost_ppd',t('posts_per_day')+' (1–24)','sp')"><div class="sr-l"><div class="sr-t" id="chs-ppd-t">Постов в день</div></div><span class="sr-v" id="sp">—</span></div>
-    <div class="sr tap" onclick="prmpt('channel_lang',t('post_lang')+' (off/ru/uk/en)','sl')"><div class="sr-l"><div class="sr-t" id="chs-lang-t">Язык постов</div></div><span class="sr-v" id="sl">—</span></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-from-t">Начало</div></div><input type="time" id="sf" value="06:00" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:90px;text-align:center" onchange="CUR_S.autopost_from=this.value"></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to2-t">Конец</div></div><input type="time" id="st" value="22:00" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:90px;text-align:center" onchange="CUR_S.autopost_to=this.value"></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ppd-t">Постов в день</div></div><select id="sp" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:70px;text-align:center" onchange="CUR_S.autopost_ppd=this.value"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="18">18</option><option value="20">20</option><option value="24">24</option><option value="30">30</option><option value="36">36</option><option value="48">48</option></select></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-lang-t">Язык постов</div></div><select id="sl" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;min-width:100px" onchange="CUR_S.channel_lang=this.value"><option value="off">OFF</option><option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="es">Español</option><option value="pt">Português</option><option value="it">Italiano</option><option value="pl">Polski</option><option value="tr">Türkçe</option><option value="ar">العربية</option><option value="zh">中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="hi">हिन्दी</option></select></div>
   </div>
   <div class="stit" id="chs-stit-filter">Фильтры контента</div>
   <div class="card" style="padding:4px 16px">
@@ -596,7 +596,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   <div id="src-list"><div class="sk" style="height:70px;border-radius:16px"></div></div>
   <div class="stit">Додати джерело</div>
   <div style="display:flex;gap:10px">
-    <input class="inp" id="src-inp" placeholder="@username або t.me/channel" style="flex:1">
+    <input class="inp" id="src-inp" placeholder="@username / t.me/channel / t.me/+invite" style="flex:1">
     <button class="btn bg" onclick="addSrc()" style="flex-shrink:0">+ Додати</button>
   </div>
 </div>
@@ -1337,7 +1337,7 @@ function applyLang(){
   // Sources overlay title + labels
   var _srt=document.querySelector('#ov-src .ov-ttl');if(_srt)_srt.textContent=t('sources_title');
   var _srst=document.querySelector('#ov-src .stit');if(_srst)_srst.textContent=t('add_source');
-  var _srp=document.getElementById('src-inp');if(_srp)_srp.placeholder=LANG==='uk'?'@username або t.me/channel':'@username или t.me/channel';
+  var _srp=document.getElementById('src-inp');if(_srp)_srp.placeholder=LANG==='uk'?'@username / t.me/channel / t.me/+invite':'@username / t.me/channel / t.me/+invite';
   var _srb=document.querySelector('#ov-src .btn.bg');if(_srb)_srb.textContent='+ '+(LANG==='uk'?'Додати':'Добавить');
   // Patterns overlay
   var _ptd=document.querySelector('#ov-pat .card > div:first-child');if(_ptd)_ptd.textContent=t('patterns_desc');
@@ -1423,7 +1423,7 @@ function renderChannels(){
       <div class="ch-body">
         <div class="srow">
           <div class="sbox"><div class="sv" style="color:var(--grn)">${q}</div><div class="sl">${t('queue')}</div></div>
-          <div class="sbox"><div class="sv">${s.autopost_ppd||1}/${LANG==='uk'?'д':'д'}</div><div class="sl">${t('posts_day')}</div></div>
+          <div class="sbox"><div class="sv">${s.autopost_ppd||6}/${LANG==='uk'?'д':'д'}</div><div class="sl">${t('posts_day')}</div></div>
           <div class="sbox"><div class="sv" style="color:var(--acc2)">${ch.total_published||0}</div><div class="sl">${t('total')}</div></div>
         </div>
         <div class="qbar">
@@ -1432,7 +1432,7 @@ function renderChannels(){
         </div>
         <div class="card" style="padding:4px 16px;margin-bottom:12px">
           <div class="sr tap" onclick="openCHS(${ch.id})">
-            <div class="sr-l"><div class="sr-t">${t('settings')}</div><div class="sr-s">${s.autopost_from||'09:00'}–${s.autopost_to||'22:00'} · ${s.autopost_ppd||1}/${LANG==='uk'?'д':'д'} · ${s.channel_lang||'off'}</div></div>
+            <div class="sr-l"><div class="sr-t">${t('settings')}</div><div class="sr-s">${s.autopost_from||'06:00'}–${s.autopost_to||'22:00'} · ${s.autopost_ppd||6}/${LANG==='uk'?'д':'д'} · ${s.channel_lang||'off'}</div></div>
             <span class="sr-v">→</span>
           </div>
           <div class="sr tap" onclick="openSrc(${ch.id})">
@@ -1535,8 +1535,20 @@ function openCHS(id){
   document.getElementById('s-xpromo').checked=!!s.accept_crosspromo;
   const priceEl=document.getElementById('s-price');
   if(priceEl) priceEl.textContent=(CFG.price_per_slot||2).toFixed(0);
-  ['sf','st','sp','sl','spbl','spbu','s-msubs','s-mprice','s-mcont','s-minfo'].forEach((el,i)=>{
-    const keys=['autopost_from','autopost_to','autopost_ppd','channel_lang','postbtn_label','postbtn_url','subscribers_count','price_per_post','contact_username','monetization_info'];
+  // Set time inputs
+  document.getElementById('sf').value=s.autopost_from||'06:00';
+  document.getElementById('st').value=s.autopost_to||'22:00';
+  // Set ppd select
+  var spEl=document.getElementById('sp');
+  spEl.value=s.autopost_ppd||'6';
+  if(!spEl.value) spEl.value='6';
+  // Set language select
+  var slEl=document.getElementById('sl');
+  slEl.value=s.channel_lang||'off';
+  if(!slEl.value) slEl.value='off';
+  // Text fields
+  ['spbl','spbu','s-msubs','s-mprice','s-mcont','s-mlink','s-minfo'].forEach(function(el,i){
+    var keys=['postbtn_label','postbtn_url','subscribers_count','price_per_post','contact_username','channel_link','monetization_info'];
     document.getElementById(el).textContent=s[keys[i]]||'—';
   });
   CUR_S={...s};
@@ -1590,9 +1602,21 @@ function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR
 function prmpt(k,lbl,el){const v=prompt(lbl,CUR_S[k]||'');if(v===null)return;CUR_S[k]=v;document.getElementById(el).textContent=v||'—'}
 async function saveSettings(){
   if(!CUR_CH)return;
+  // Validate time window
+  var af=CUR_S.autopost_from||'',at=CUR_S.autopost_to||'';
+  if(af&&at){
+    var fp=af.split(':'),tp=at.split(':');
+    if(parseInt(fp[0])*60+parseInt(fp[1]||0)>=parseInt(tp[0])*60+parseInt(tp[1]||0)){
+      toast(LANG==='uk'?'Початок має бути раніше за кінець':'Начало должно быть раньше конца');return;
+    }
+  }
   const btn=document.getElementById('save-btn');btn.textContent=t('saving');btn.disabled=true;
   try{await api('POST','/api/channel/'+CUR_CH+'/settings',CUR_S);toast(t('saved'));closeOv('ov-chs');await loadChannels()}
-  catch(e){toast(t('error')+e.message)}
+  catch(e){
+    var msg=e.message;
+    try{var p=JSON.parse(msg);msg=p.message||p.error||msg;}catch{}
+    toast(t('error')+msg);
+  }
   btn.textContent=t('save');btn.disabled=false;
 }
 
@@ -1704,10 +1728,20 @@ async function openSrc(id){
     if(!srcs.length){el.innerHTML='<div style="color:var(--mu);font-size:13px;padding:12px 0">'+t('no_sources')+'</div>';return}
     el.innerHTML=srcs.map(function(s){
       const hasSig=s.signature&&s.signature.length>2;
-      const sigHtml=hasSig
+      const js=s.join_status;
+      var statusHtml='';
+      if(js==='pending'){
+        statusHtml='<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.25);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel);font-weight:600">'+(LANG==='uk'?'⏳ Очікуємо підтвердження заявки на вступ...':'⏳ Ожидаем подтверждение заявки на вступление...')+'</div></div>';
+      } else if(js==='expired'){
+        statusHtml='<div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:#f55;font-weight:600">'+(LANG==='uk'?'❌ Посилання закінчилося':'❌ Ссылка истекла')+'</div></div>';
+      } else if(js==='error'){
+        statusHtml='<div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:#f55;font-weight:600">'+(LANG==='uk'?'❌ Помилка приєднання':'❌ Ошибка присоединения')+'</div></div>';
+      }
+      const sigHtml=js==='pending'||js==='expired'||js==='error'?statusHtml:(hasSig
         ?'<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">'+t('auto_pattern')+'</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">'+t('reset_pattern')+'</button></div>'
-        :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">'+t('pattern_searching')+'</div></div>';
-      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||('@'+s.username))+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">@'+s.username+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\'@'+s.username+'\')">✏️ '+t('patterns_title')+'</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
+        :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">'+t('pattern_searching')+'</div></div>');
+      var nameDisplay=s.username.startsWith('+')?s.username:('@'+s.username);
+      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||nameDisplay)+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">'+nameDisplay+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\''+nameDisplay.replace(/'/g,"\\'")+'\')">✏️ '+t('patterns_title')+'</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
     }).join('');
   }catch(e){toast(t('error')+e.message)}
 }
@@ -1716,14 +1750,23 @@ async function addSrc(){
   const inp=document.getElementById('src-inp');
   const btn=document.querySelector('#ov-src .btn.bg');
   let un=inp.value.trim();
-  un=un.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
+  // Keep invite links (t.me/+HASH) as-is, only strip for regular usernames
+  if(/t\.me\/\+/.test(un)||/t\.me\/joinchat\//.test(un)){
+    // pass full URL to backend
+  } else {
+    un=un.replace(/^https?:\/\//,'').replace(/^t\.me\//,'').replace(/^@/,'').split('/')[0].split('?')[0].trim();
+  }
   if(!un){toast(t('enter_source'));return;}
   const orig=btn?btn.textContent:'';
   if(btn){btn.textContent='⏳...';btn.disabled=true;}
   try{
-    await api('POST','/api/channel/'+CUR_CH+'/sources',{username:un});
+    const res=await api('POST','/api/channel/'+CUR_CH+'/sources',{username:un});
     inp.value='';
-    toast(t('source_added'));
+    if(res.join_status==='pending'){
+      toast(LANG==='uk'?'⏳ Заявку надіслано, очікуємо підтвердження':'⏳ Заявка отправлена, ожидаем подтверждение');
+    } else {
+      toast(t('source_added'));
+    }
     await openSrc(CUR_CH);
     await loadChannels();
   }catch(e){

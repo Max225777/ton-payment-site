@@ -389,6 +389,8 @@ async def init_db():
         "CREATE INDEX IF NOT EXISTS idx_rp_grouped ON raw_posts(grouped_id)",
         "CREATE INDEX IF NOT EXISTS idx_ref_referrer ON referrals(referrer_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_ref_referred ON referrals(referred_id, status)",
+        "ALTER TABLE sources ADD COLUMN join_status TEXT DEFAULT NULL",
+        "ALTER TABLE sources ADD COLUMN invite_hash TEXT DEFAULT NULL",
         ]:
             try:
                 await db.execute(sql)
@@ -559,10 +561,18 @@ async def get_channel(channel_id: int) -> Optional[dict]:
 
 
 async def create_channel(user_id: int, chat_id: int, title: str, username: str, category: str = "general") -> int:
+    default_settings = json.dumps({
+        "autopost_enabled": False,
+        "autopost_from": "06:00",
+        "autopost_to": "22:00",
+        "autopost_ppd": "6",
+        "channel_lang": "ru",
+        "ai_mode": "on",
+    }, ensure_ascii=False)
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         cur = await db.execute(
             "INSERT INTO channels(user_id, chat_id, title, username, category, settings) VALUES(?,?,?,?,?,?)",
-            (user_id, chat_id, title, username, category or "general", "{}")
+            (user_id, chat_id, title, username, category or "general", default_settings)
         )
         await db.commit()
         ch_id = cur.lastrowid
@@ -775,28 +785,86 @@ async def get_source(source_id: int) -> Optional[dict]:
 
 
 
-async def add_source(channel_id: int, username_or_url: str) -> int:
-    """Accept @username, t.me/username or https://t.me/username.
-    Resolves real channel title via Telethon and stores it.
+async def add_source(channel_id: int, username_or_url: str) -> dict:
+    """Accept @username, t.me/username, t.me/+HASH (invite link).
+    Resolves real channel title via Telethon. For invite links with approval,
+    sends join request and sets join_status='pending'.
+    Returns dict: {id, join_status, title}.
     """
     import re as _re
     raw = username_or_url.strip()
-    # Extract username from URL
-    url_match = _re.search(r't\.me/([A-Za-z0-9_]+)', raw)
-    if url_match:
-        username = url_match.group(1)
+
+    # Detect invite link (t.me/+HASH or t.me/joinchat/HASH)
+    invite_match = _re.search(r't\.me/\+([A-Za-z0-9_\-]+)', raw) or \
+                   _re.search(r't\.me/joinchat/([A-Za-z0-9_\-]+)', raw)
+    invite_hash = invite_match.group(1) if invite_match else None
+
+    # Extract username from URL (non-invite)
+    if not invite_hash:
+        url_match = _re.search(r't\.me/([A-Za-z0-9_]+)', raw)
+        if url_match:
+            username = url_match.group(1)
+        else:
+            username = raw.lstrip("@").split("/")[0].split("?")[0].strip()
+        username = username.lower()
     else:
-        username = raw.lstrip("@").split("/")[0].split("?")[0].strip()
-    username = username.lower()
+        username = f"+{invite_hash}"  # store invite hash as username
 
     # Try to resolve real title via Telethon
     title = None
+    join_status = None
     try:
         client, _ = await _get_telethon_client()
         if client:
             try:
-                entity = await client.get_entity(f"@{username}")
-                title = getattr(entity, "title", None) or getattr(entity, "username", None)
+                if invite_hash:
+                    from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
+                    from telethon.tl.types import ChatInviteAlready, ChatInvite, ChatInvitePeek
+                    try:
+                        result = await client.invoke(CheckChatInviteRequest(hash=invite_hash))
+                        if isinstance(result, ChatInviteAlready):
+                            # Already joined
+                            entity = result.chat
+                            title = getattr(entity, "title", None)
+                            join_status = "joined"
+                            # Update username to real one if available
+                            real_un = getattr(entity, "username", None)
+                            if real_un:
+                                username = real_un.lower()
+                        elif isinstance(result, (ChatInvite, ChatInvitePeek)):
+                            title = getattr(result, "title", None)
+                            # Try to join
+                            try:
+                                updates = await client.invoke(ImportChatInviteRequest(hash=invite_hash))
+                                # If we get here, join was instant (no approval needed)
+                                join_status = "joined"
+                                if hasattr(updates, 'chats') and updates.chats:
+                                    chat = updates.chats[0]
+                                    title = getattr(chat, "title", title)
+                                    real_un = getattr(chat, "username", None)
+                                    if real_un:
+                                        username = real_un.lower()
+                            except Exception as je:
+                                je_str = str(je).lower()
+                                if "request" in je_str or "approval" in je_str or "invite_request_sent" in je_str:
+                                    # Join request sent, awaiting approval
+                                    join_status = "pending"
+                                    log.info(f"Join request sent for invite +{invite_hash}, awaiting approval")
+                                elif "already" in je_str or "user_already" in je_str:
+                                    join_status = "joined"
+                                else:
+                                    log.warning(f"Failed to join via invite +{invite_hash}: {je}")
+                                    join_status = "error"
+                    except Exception as e:
+                        log.warning(f"CheckChatInvite failed for +{invite_hash}: {e}")
+                        e_str = str(e).lower()
+                        if "expired" in e_str or "revoked" in e_str:
+                            join_status = "expired"
+                        else:
+                            join_status = "error"
+                else:
+                    entity = await client.get_entity(f"@{username}")
+                    title = getattr(entity, "title", None) or getattr(entity, "username", None)
             except Exception:
                 pass
             finally:
@@ -806,18 +874,91 @@ async def add_source(channel_id: int, username_or_url: str) -> int:
         pass
 
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-        row = await _fetchone(db, "SELECT id FROM sources WHERE channel_id=? AND username=?", (channel_id, username))
+        row = await _fetchone(db, "SELECT id, join_status FROM sources WHERE channel_id=? AND username=?", (channel_id, username))
         if row:
-            # Update title if we got one
             if title:
                 await db.execute("UPDATE sources SET title=? WHERE id=?", (title, row["id"]))
-                await db.commit()
-            return row["id"]
+            if join_status:
+                await db.execute("UPDATE sources SET join_status=?, invite_hash=? WHERE id=?",
+                                 (join_status, invite_hash, row["id"]))
+            await db.commit()
+            return {"id": row["id"], "join_status": join_status or row["join_status"]}
         cur = await db.execute(
-            "INSERT INTO sources(channel_id, username, title) VALUES(?,?,?)", (channel_id, username, title)
+            "INSERT INTO sources(channel_id, username, title, join_status, invite_hash) VALUES(?,?,?,?,?)",
+            (channel_id, username, title, join_status, invite_hash)
         )
         await db.commit()
-        return cur.lastrowid
+        return {"id": cur.lastrowid, "join_status": join_status}
+
+
+async def check_pending_join_requests():
+    """Check sources with join_status='pending' — verify if join request was approved."""
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        db.row_factory = aiosqlite.Row
+        rows = await _fetchall(db,
+            "SELECT id, channel_id, username, invite_hash FROM sources WHERE join_status='pending' AND is_active=1"
+        )
+    if not rows:
+        return
+    log.info(f"Checking {len(rows)} pending join request(s)...")
+    client, _ = await _get_telethon_client()
+    if not client:
+        return
+    try:
+        from telethon.tl.functions.messages import CheckChatInviteRequest
+        from telethon.tl.types import ChatInviteAlready
+        for src in rows:
+            inv_hash = src["invite_hash"]
+            if not inv_hash:
+                continue
+            try:
+                result = await client.invoke(CheckChatInviteRequest(hash=inv_hash))
+                if isinstance(result, ChatInviteAlready):
+                    # Approved! Update status
+                    real_un = getattr(result.chat, "username", None)
+                    title = getattr(result.chat, "title", None)
+                    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+                        updates = ["join_status='joined'"]
+                        params = []
+                        if real_un:
+                            updates.append("username=?")
+                            params.append(real_un.lower())
+                        if title:
+                            updates.append("title=?")
+                            params.append(title)
+                        params.append(src["id"])
+                        await db.execute(f"UPDATE sources SET {','.join(updates)} WHERE id=?", params)
+                        await db.commit()
+                    log.info(f"Join request approved for source {src['id']} (+{inv_hash})")
+                    # Notify admin
+                    if _bot_instance and ADMIN_IDS:
+                        try:
+                            await _bot_instance.send_message(
+                                ADMIN_IDS[0],
+                                f"✅ <b>Заявку прийнято!</b>\n\n"
+                                f"Джерело: <code>+{inv_hash}</code>\n"
+                                f"Канал: {title or '—'}\n"
+                                f"Парсинг розпочнеться автоматично.",
+                                parse_mode="HTML"
+                            )
+                        except Exception:
+                            pass
+                else:
+                    log.info(f"Join request still pending for +{inv_hash}")
+            except Exception as e:
+                e_str = str(e).lower()
+                if "expired" in e_str or "revoked" in e_str:
+                    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+                        await db.execute("UPDATE sources SET join_status='expired' WHERE id=?", (src["id"],))
+                        await db.commit()
+                    log.warning(f"Invite link expired for source {src['id']}: {e}")
+                else:
+                    log.debug(f"Check join for +{inv_hash}: {e}")
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
 
 
 async def toggle_source(source_id: int):
@@ -2406,8 +2547,27 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
         MAX_FETCH     = 5000           # ліміт — йдемо глибоко поки не наберемо нових
 
         try:
-            un = source['username'].lstrip('@')
-            entity = await client.get_entity(f"@{source['username']}")
+            un = source['username'].lstrip('@').lstrip('+')
+            inv_hash = source.get('invite_hash')
+            if inv_hash or source['username'].startswith('+'):
+                # Invite-link source: resolve entity via invite hash
+                from telethon.tl.functions.messages import CheckChatInviteRequest
+                from telethon.tl.types import ChatInviteAlready
+                _h = inv_hash or source['username'].lstrip('+')
+                try:
+                    res = await client.invoke(CheckChatInviteRequest(hash=_h))
+                    if isinstance(res, ChatInviteAlready):
+                        entity = res.chat
+                    else:
+                        log.warning(f"Source +{_h}: not yet joined (join_status={source.get('join_status')})")
+                        await client.disconnect()
+                        return 0
+                except Exception as _ie:
+                    log.warning(f"Source +{_h}: invite check failed: {_ie}")
+                    await client.disconnect()
+                    return 0
+            else:
+                entity = await client.get_entity(f"@{source['username']}")
         except Exception as e:
             err_str = str(e).lower()
             if "private" in err_str or "invite" in err_str or "join" in err_str or "forbidden" in err_str:
@@ -2735,9 +2895,20 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
     results = []
     try:
         try:
-            _un2 = source['username'].lstrip('@')
+            _un2 = source['username'].lstrip('@').lstrip('+')
             entity = None
-            entity = await client.get_entity(f"@{source['username']}")
+            inv_hash = source.get('invite_hash')
+            if inv_hash or source['username'].startswith('+'):
+                from telethon.tl.functions.messages import CheckChatInviteRequest
+                from telethon.tl.types import ChatInviteAlready
+                _h = inv_hash or source['username'].lstrip('+')
+                res = await client.invoke(CheckChatInviteRequest(hash=_h))
+                if isinstance(res, ChatInviteAlready):
+                    entity = res.chat
+                else:
+                    raise Exception(f"not yet joined (+{_h})")
+            else:
+                entity = await client.get_entity(f"@{source['username']}")
         except Exception as e:
             log.warning(f"  _collect @{source['username']}: get_entity failed: {e}")
             return []
@@ -3078,7 +3249,7 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
         log.info(f"Channel {channel_id}: queue={current_queue}>={QUEUE_MAX}, skip parse")
         return -1  # -1 = queue full, not "0 found"
     sources = await get_channel_sources(channel_id)
-    active  = [s for s in sources if s.get("is_active", 1)]
+    active  = [s for s in sources if s.get("is_active", 1) and s.get("join_status") not in ("pending", "expired", "error")]
     if not active:
         return 0
     import math
@@ -3966,9 +4137,9 @@ async def should_autopost_now(channel: dict) -> bool:
         log.debug(f"  ch={channel['id']}: autopost blocked — status={status}")
         return False
     settings = channel.get("_settings", {})
-    ppd = int(settings.get("autopost_ppd", 1))
-    time_from = settings.get("autopost_from", "00:00")
-    time_to   = settings.get("autopost_to",   "23:59")
+    ppd = int(settings.get("autopost_ppd", 6))
+    time_from = settings.get("autopost_from", "06:00")
+    time_to   = settings.get("autopost_to",   "22:00")
 
     from datetime import timezone
     import os

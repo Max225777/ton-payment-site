@@ -276,6 +276,15 @@ async def run_autorenew():
         log.error(f"run_autorenew error: {e}")
 
 
+async def run_check_join_requests():
+    """Every 5 min: check pending join requests for approval."""
+    try:
+        from services import check_pending_join_requests
+        await check_pending_join_requests()
+    except Exception as e:
+        log.error(f"run_check_join_requests error: {e}")
+
+
 async def run_midnight(bot: Bot):
     """00:00 UTC — clean old posts & media, then trigger fresh parse."""
     await daily_midnight_cleanup()
@@ -413,6 +422,27 @@ async def api_channel_settings_save(request):
     if not any(c["id"]==ch_id for c in user_chs):
         return _web.json_response({"error":"forbidden"}, status=403)
     body = await request.json()
+    # Validate time window: start must be before end
+    af = body.get("autopost_from", "")
+    at = body.get("autopost_to", "")
+    if af and at:
+        try:
+            fh, fm = map(int, af.split(":"))
+            th, tm = map(int, at.split(":"))
+            if fh * 60 + fm >= th * 60 + tm:
+                return _web.json_response({"error":"invalid_time",
+                    "message":"Начало должно быть раньше конца"}, status=400)
+        except (ValueError, IndexError):
+            pass
+    # Validate ppd
+    ppd = body.get("autopost_ppd")
+    if ppd is not None:
+        try:
+            ppd_int = int(ppd)
+            if ppd_int < 1: body["autopost_ppd"] = "1"
+            elif ppd_int > 48: body["autopost_ppd"] = "48"
+        except (ValueError, TypeError):
+            pass
     await update_channel_settings(ch_id, body)
     return _j({"ok": True})
 
@@ -734,7 +764,18 @@ async def api_source_add(request):
     username = body.get("username","").strip()  # can be URL or @handle
     if not username:
         return _web.json_response({"error":"username required"}, status=400)
-    src_id = await add_source(ch_id, username)
+    result = await add_source(ch_id, username)
+    src_id = result["id"]
+    join_status = result.get("join_status")
+    if join_status == "pending":
+        return _j({"ok":True,"id":src_id,"join_status":"pending",
+                    "message":"Заявку на вступ надіслано. Очікуємо підтвердження."})
+    if join_status == "expired":
+        return _j({"ok":False,"error":"invite_expired",
+                    "message":"Посилання-запрошення закінчилося або відкликане."})
+    if join_status == "error":
+        return _j({"ok":False,"error":"join_error",
+                    "message":"Не вдалося приєднатися до каналу за цим посиланням."})
     import asyncio
     async def _detect_then_parse():
         try:
@@ -746,7 +787,7 @@ async def api_source_add(request):
         except Exception as _e:
             log.warning(f"parse after source add failed ch={ch_id}: {_e}")
     asyncio.create_task(_detect_then_parse())
-    return _j({"ok":True,"id":src_id,"detecting":True})
+    return _j({"ok":True,"id":src_id,"join_status":join_status or "joined","detecting":True})
 
 @_auth
 async def api_source_delete(request):
@@ -1320,6 +1361,7 @@ async def main():
     scheduler.add_job(run_autorenew,       "interval", minutes=30, id="run_autorenew")
     scheduler.add_job(run_midnight,        trigger=CronTrigger(hour=0, minute=0), id="run_midnight", args=[bot])
     scheduler.add_job(run_media_cleanup,   "interval", hours=1,    id="run_media_cleanup")
+    scheduler.add_job(run_check_join_requests, "interval", minutes=5, id="run_check_joins")
     scheduler.start()
     log.info(f"Scheduler started (parse every {PARSE_INTERVAL_MINUTES}min, cleanup at 00:00 UTC)")
 
