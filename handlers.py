@@ -570,7 +570,7 @@ async def adm_sessions(cq: CallbackQuery):
     from services import get_session_status as _gss
     import glob as _gl
     sess_files = sorted(f for f in _gl.glob("/app/*.session"))
-    statuses = await _gss()
+    statuses = _gss()
     lines = []
     for sf in sess_files:
         import os as _osa
