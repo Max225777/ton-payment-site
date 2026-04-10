@@ -782,7 +782,7 @@ ru:{
   enter_username:'Введите username канала',
   no_channels:'🚀 Нет каналов. Добавьте первый!',
   trial_badge:'🧪 Пробный', active_badge:'✅ Активный', expired_badge:'❌ Истекла',
-  queue:'Очередь', posts_day:'Постов', total:'Всего',
+  queue:'Очередь', posts_day:'Постов', posts_day_short:'д', total:'Всего',
   settings:'⚙️ Настройки', sources_patterns:'🔗 Источники и паттерны',
   post_queue:'📋 Очередь постов', waiting:'ожидают',
   subscription:'📅 Подписка', need_pay:'⚠️ Нужна оплата',
@@ -938,7 +938,7 @@ uk:{
   enter_username:'Введіть username каналу',
   no_channels:'🚀 Немає каналів. Додайте перший!',
   trial_badge:'🧪 Пробний', active_badge:'✅ Активний', expired_badge:'❌ Закінчилась',
-  queue:'Черга', posts_day:'Постів', total:'Всього',
+  queue:'Черга', posts_day:'Постів', posts_day_short:'д', total:'Всього',
   settings:'⚙️ Налаштування', sources_patterns:'🔗 Джерела і паттерни',
   post_queue:'📋 Черга постів', waiting:'очікують',
   subscription:'📅 Підписка', need_pay:'⚠️ Потрібна оплата',
@@ -1735,7 +1735,21 @@ async function openSrc(id){
     const srcs=await api('GET','/api/channel/'+id+'/sources');
     const el=document.getElementById('src-list');
     if(!srcs.length){el.innerHTML='<div style="color:var(--mu);font-size:13px;padding:12px 0">'+t('no_sources')+'</div>';return}
-    el.innerHTML=srcs.map(function(s){
+    // Top banner for pending join requests
+    var pendingSrcs=srcs.filter(function(s){return s.join_status==='pending'});
+    var topBanner='';
+    if(pendingSrcs.length){
+      var names=pendingSrcs.map(function(s){return s.title||s.username}).join(', ');
+      topBanner='<div style="background:linear-gradient(135deg,rgba(245,200,66,.12),rgba(255,160,40,.1));border:1px solid rgba(245,200,66,.35);border-radius:14px;padding:14px 16px;margin-bottom:12px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:20px">🔒</span><span style="font-size:14px;font-weight:700;color:var(--yel)">'
+        +(LANG==='uk'?'Приватний канал — заявка на розгляді':'Приватный канал — заявка на рассмотрении')+'</span></div>'
+        +'<div style="font-size:12px;color:var(--tx);line-height:1.5;opacity:.85">'
+        +(LANG==='uk'
+          ?'Канал <b>'+_escHtml(names)+'</b> потребує схвалення заявки на вступ. Бот автоматично перевіряє кожні 5 хвилин. Як тільки заявку приймуть — парсинг розпочнеться автоматично.'
+          :'Канал <b>'+_escHtml(names)+'</b> требует одобрения заявки на вступление. Бот автоматически проверяет каждые 5 минут. Как только заявку примут — парсинг начнётся автоматически.')
+        +'</div></div>';
+    }
+    el.innerHTML=topBanner+srcs.map(function(s){
       const hasSig=s.signature&&s.signature.length>2;
       const js=s.join_status;
       var statusHtml='';
@@ -2094,10 +2108,19 @@ async function loadAdminData(){
         else if(c.username) link='https://t.me/'+c.username;
         var subSt=c.subscription_status||'none';
         var subCol=subSt==='active'?'var(--grn)':subSt==='trial'?'var(--acc2)':'var(--red)';
-        ch+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bor)">';
+        var apOn=s.autopost_enabled;
+        var ppd=s.autopost_ppd||6;
+        var lang=s.channel_lang||'off';
+        ch+='<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)">';
         ch+='<div style="flex:1;min-width:0">';
-        ch+='<div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(link?'<a href="'+_escHtml(link)+'" target="_blank" style="color:var(--acc2);text-decoration:none" onclick="event.stopPropagation();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(\''+_escHtml(link)+'\')">':'')+_escHtml(c.title||c.username||'#'+c.id)+(link?'</a>':'')+'</div>';
-        ch+='<div style="font-size:10px;color:var(--mu)">ID:'+c.id+' · 👤 @'+_escHtml(c.owner_username||c.owner_tg_id||'?')+'</div>';
+        ch+='<div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+          +(link?'<a href="'+_escHtml(link)+'" target="_blank" style="color:var(--acc2);text-decoration:none" onclick="event.stopPropagation();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(\''+_escHtml(link)+'\')">':'')+_escHtml(c.title||c.username||'#'+c.id)+(link?'</a>':'')
+          +(link&&c.username?' <a href="https://t.me/'+_escHtml(c.username)+'" target="_blank" style="font-size:11px;color:var(--mu);text-decoration:none;font-weight:400" onclick="event.stopPropagation();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(\'https://t.me/'+_escHtml(c.username)+'\')">@'+_escHtml(c.username)+'</a>':'')
+          +'</div>';
+        ch+='<div style="font-size:10px;color:var(--mu);margin-top:2px">ID:'+c.id+' · 👤 @'+_escHtml(c.owner_username||c.owner_tg_id||'?')
+          +' · '+(apOn?'<span style="color:var(--grn)">▶</span>':'<span style="color:var(--red)">⏸</span>')+' '+ppd+'/'+t('posts_day_short')
+          +' · '+lang.toUpperCase()
+          +'</div>';
         ch+='</div>';
         ch+='<div style="font-size:10px;font-weight:700;color:'+subCol+';text-transform:uppercase">'+_escHtml(subSt)+'</div>';
         ch+='</div>';
