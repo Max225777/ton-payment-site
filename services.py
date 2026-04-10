@@ -821,7 +821,7 @@ async def add_source(channel_id: int, username_or_url: str) -> dict:
                     from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
                     from telethon.tl.types import ChatInviteAlready, ChatInvite, ChatInvitePeek
                     try:
-                        result = await client.invoke(CheckChatInviteRequest(hash=invite_hash))
+                        result = await client(CheckChatInviteRequest(hash=invite_hash))
                         if isinstance(result, ChatInviteAlready):
                             # Already joined
                             entity = result.chat
@@ -835,7 +835,7 @@ async def add_source(channel_id: int, username_or_url: str) -> dict:
                             title = getattr(result, "title", None)
                             # Try to join
                             try:
-                                updates = await client.invoke(ImportChatInviteRequest(hash=invite_hash))
+                                updates = await client(ImportChatInviteRequest(hash=invite_hash))
                                 # If we get here, join was instant (no approval needed)
                                 join_status = "joined"
                                 if hasattr(updates, 'chats') and updates.chats:
@@ -846,14 +846,18 @@ async def add_source(channel_id: int, username_or_url: str) -> dict:
                                         username = real_un.lower()
                             except Exception as je:
                                 je_str = str(je).lower()
-                                if "request" in je_str or "approval" in je_str or "invite_request_sent" in je_str:
+                                je_cls = type(je).__name__.lower()
+                                if "invite_request_sent" in je_cls or "request" in je_str or "approval" in je_str or "invite_request_sent" in je_str:
                                     # Join request sent, awaiting approval
                                     join_status = "pending"
                                     log.info(f"Join request sent for invite +{invite_hash}, awaiting approval")
-                                elif "already" in je_str or "user_already" in je_str:
+                                elif "already" in je_str or "user_already" in je_cls:
                                     join_status = "joined"
+                                elif "flood" in je_str:
+                                    log.warning(f"FloodWait joining +{invite_hash}: {je}")
+                                    join_status = "error"
                                 else:
-                                    log.warning(f"Failed to join via invite +{invite_hash}: {je}")
+                                    log.warning(f"Failed to join via invite +{invite_hash}: {je} (class: {type(je).__name__})")
                                     join_status = "error"
                     except Exception as e:
                         log.warning(f"CheckChatInvite failed for +{invite_hash}: {e}")
@@ -912,7 +916,7 @@ async def check_pending_join_requests():
             if not inv_hash:
                 continue
             try:
-                result = await client.invoke(CheckChatInviteRequest(hash=inv_hash))
+                result = await client(CheckChatInviteRequest(hash=inv_hash))
                 if isinstance(result, ChatInviteAlready):
                     # Approved! Update status
                     real_un = getattr(result.chat, "username", None)
@@ -2580,7 +2584,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 from telethon.tl.types import ChatInviteAlready
                 _h = inv_hash or source['username'].lstrip('+')
                 try:
-                    res = await client.invoke(CheckChatInviteRequest(hash=_h))
+                    res = await client(CheckChatInviteRequest(hash=_h))
                     if isinstance(res, ChatInviteAlready):
                         entity = res.chat
                     else:
@@ -2927,7 +2931,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
                 from telethon.tl.functions.messages import CheckChatInviteRequest
                 from telethon.tl.types import ChatInviteAlready
                 _h = inv_hash or source['username'].lstrip('+')
-                res = await client.invoke(CheckChatInviteRequest(hash=_h))
+                res = await client(CheckChatInviteRequest(hash=_h))
                 if isinstance(res, ChatInviteAlready):
                     entity = res.chat
                 else:
