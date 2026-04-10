@@ -681,6 +681,10 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <button class="btn bp" onclick="admBroadcast()">📢 Надіслати всім</button>
     <div id="adm-bc-result" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
   </div>
+  <div class="stit">🔌 Telethon сесії</div>
+  <div class="card" style="padding:12px 16px" id="adm-sessions"><div class="sk" style="height:20px;margin:6px 0"></div></div>
+  <div class="stit">📋 Всі канали</div>
+  <div class="card" style="padding:4px 16px;max-height:400px;overflow-y:auto" id="adm-channels"><div class="sk" style="height:20px;margin:6px 0"></div></div>
   <div class="stit" id="adm-users-title">Останні користувачі</div>
   <div style="margin-bottom:12px">
     <input class="inp" id="adm-search" placeholder="Пошук за ID або @username..." oninput="admSearch(this.value)" style="font-size:14px">
@@ -2017,6 +2021,46 @@ async function loadAdminData(){
     var _ut=document.getElementById('adm-users-title');if(_ut)_ut.textContent=t('recent_users');
     const users=await api('GET','/api/admin/users');
     renderAdmUsers(users);
+    // Sessions
+    try{
+      const sess=await api('GET','/api/admin/sessions');
+      var sh='';
+      var keys=Object.keys(sess);
+      if(!keys.length){sh='<div style="color:var(--mu);font-size:12px;padding:6px 0">Немає .session файлів</div>';}
+      else keys.forEach(function(k){
+        var s=sess[k];
+        var st=s.status||'unknown';
+        var col=st==='ok'?'var(--grn)':st==='error'?'var(--red)':'var(--mu)';
+        sh+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bor)">';
+        sh+='<div style="width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0"></div>';
+        sh+='<div style="flex:1;font-size:13px;font-weight:600">Session '+_escHtml(k)+'</div>';
+        sh+='<div style="font-size:11px;color:'+col+';font-weight:700">'+_escHtml(st)+'</div>';
+        sh+='</div>';
+      });
+      document.getElementById('adm-sessions').innerHTML=sh;
+    }catch(e2){}
+    // All channels
+    try{
+      const chs=await api('GET','/api/admin/channels');
+      var ch='';
+      if(!chs.length){ch='<div style="color:var(--mu);font-size:12px;padding:6px 0">Немає каналів</div>';}
+      else chs.forEach(function(c){
+        var link='';
+        var s=c.settings||{};
+        if(s.channel_link) link=s.channel_link;
+        else if(c.username) link='https://t.me/'+c.username;
+        var subSt=c.subscription_status||'none';
+        var subCol=subSt==='active'?'var(--grn)':subSt==='trial'?'var(--acc2)':'var(--red)';
+        ch+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bor)">';
+        ch+='<div style="flex:1;min-width:0">';
+        ch+='<div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(link?'<a href="'+_escHtml(link)+'" target="_blank" style="color:var(--acc2);text-decoration:none" onclick="event.stopPropagation();if(window.Telegram?.WebApp)Telegram.WebApp.openTelegramLink(\''+_escHtml(link)+'\')">':'')+_escHtml(c.title||c.username||'#'+c.id)+(link?'</a>':'')+'</div>';
+        ch+='<div style="font-size:10px;color:var(--mu)">ID:'+c.id+' · 👤 @'+_escHtml(c.owner_username||c.owner_tg_id||'?')+'</div>';
+        ch+='</div>';
+        ch+='<div style="font-size:10px;font-weight:700;color:'+subCol+';text-transform:uppercase">'+_escHtml(subSt)+'</div>';
+        ch+='</div>';
+      });
+      document.getElementById('adm-channels').innerHTML=ch;
+    }catch(e3){}
   }catch(e){toast(t('error')+e.message);}
 }
 function renderAdmUsers(users){

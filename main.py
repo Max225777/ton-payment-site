@@ -454,6 +454,9 @@ async def api_channel_add(request):
             title = invite_link
             try:
                 client, _ = await _get_telethon_client()
+                if not client:
+                    return _web.json_response({"error":"channel_error",
+                        "message":"Telethon сесія недоступна. Перевірте налаштування сесій."}, status=500)
                 from telethon.tl.functions.messages import CheckChatInviteRequest, ImportChatInviteRequest
                 from telethon.tl.functions.channels import LeaveChannelRequest
                 inv_hash = invite_link.split("+")[-1].split("/joinchat/")[-1].split("/")[-1].split("?")[0]
@@ -1172,6 +1175,14 @@ async def api_admin_all_channels(request):
     return _j(result)
 
 @_auth
+async def api_admin_sessions(request):
+    """Admin: get Telethon sessions status."""
+    from services import ADMIN_IDS, get_session_status
+    if request["tg_user"]["id"] not in ADMIN_IDS:
+        return _web.json_response({"error":"forbidden"}, status=403)
+    return _j(get_session_status())
+
+@_auth
 async def api_admin_user_block(request):
     """Admin: block/unblock user."""
     from services import ADMIN_IDS, set_user_blocked
@@ -1305,6 +1316,7 @@ async def start_webapp():
     app.router.add_post  ("/api/set_notifications",         api_set_notifications)
     app.router.add_get   ("/api/check_subscriptions",       api_check_subscriptions)
     app.router.add_get   ("/api/admin/channels",            api_admin_all_channels)
+    app.router.add_get   ("/api/admin/sessions",            api_admin_sessions)
     app.router.add_post  ("/api/admin/user/block",          api_admin_user_block)
     app.router.add_get   ("/api/marketplace",               api_marketplace)
     app.router.add_get   ("/api/marketplace/photo/{id}",    api_marketplace_photo)
