@@ -540,8 +540,19 @@ async def adm_ch_list(cq: CallbackQuery):
     for ch in channels[:25]:
         status = ch.get("subscription_status", "?")
         title = ch.get("title") or ch.get("username") or f"#{ch['id']}"
+        username = ch.get("username", "")
         icon = {"active":"🟢","trial":"🟡","restricted":"🔴","blocked":"⚫"}.get(status,"⚪")
-        lines.append(f"{icon} <b>{title}</b> [{status}] — id:{ch['id']}")
+        try:
+            s = json.loads(ch.get("settings") or "{}")
+        except Exception:
+            s = {}
+        link = s.get("channel_link") or (f"https://t.me/{username}" if username else "")
+        ap = "▶" if s.get("autopost_enabled") else "⏸"
+        ppd = s.get("autopost_ppd", "6")
+        lang = (s.get("channel_lang") or "off").upper()
+        title_display = f"<a href='{link}'>{title}</a>" if link else f"<b>{title}</b>"
+        un_display = f" @{username}" if username else ""
+        lines.append(f"{icon} {title_display}{un_display}\n   {ap} {ppd}/д · {lang} · [{status}] · id:{ch['id']}")
     text = "📢 <b>Всі канали</b>\n\n" + "\n".join(lines) if lines else "Каналів немає"
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="adm_back")]])
     await safe_edit(cq, text[:4000], kb); await cq.answer()
