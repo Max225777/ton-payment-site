@@ -748,7 +748,8 @@ async def api_sources(request):
         async with aiosqlite.connect(DB_PATH, timeout=10) as db:
             pats = await _fetchall(db, "SELECT * FROM source_patterns WHERE source_id=?", (s["id"],))
         result.append({**s, "patterns":[{**p,"auto":bool(p.get("auto",0))} for p in pats],
-                       "signature":s.get("promo_signature","")})
+                       "signature":s.get("promo_signature",""),
+                       "pattern_verified": bool(s.get("pattern_verified",0))})
     return _j(result)
 
 @_auth
@@ -778,6 +779,7 @@ async def api_source_add(request):
                     "message":"Не вдалося приєднатися до каналу за цим посиланням."})
     import asyncio
     async def _detect_then_parse():
+        from services import send_pattern_verification_request
         try:
             await detect_and_save_signature_for_new_source(src_id, username)
         except Exception as _e:
@@ -786,6 +788,11 @@ async def api_source_add(request):
             await parse_channel_sources(ch_id)
         except Exception as _e:
             log.warning(f"parse after source add failed ch={ch_id}: {_e}")
+        # Once parsing is done and signature is saved, ask the user to verify it
+        try:
+            await send_pattern_verification_request(src_id)
+        except Exception as _e:
+            log.debug(f"post-add verify send: {_e}")
     asyncio.create_task(_detect_then_parse())
     return _j({"ok":True,"id":src_id,"join_status":join_status or "joined","detecting":True})
 
@@ -833,15 +840,29 @@ async def api_source_reset_sig(request):
     if not any(c["id"]==src["channel_id"] for c in user_chs):
         return _web.json_response({"error":"forbidden"}, status=403)
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-        await db.execute("UPDATE sources SET promo_signature=NULL WHERE id=?", (src_id,))
+        await db.execute(
+            "UPDATE sources SET promo_signature=NULL, pattern_verified=0 WHERE id=?",
+            (src_id,))
         await db.commit()
     import asyncio
-    asyncio.create_task(detect_and_save_signature_for_new_source(src_id, src["username"]))
+    async def _redetect_then_verify():
+        from services import send_pattern_verification_request
+        try:
+            await detect_and_save_signature_for_new_source(src_id, src["username"])
+        except Exception as _e:
+            log.debug(f"reset_sig detect: {_e}")
+        try:
+            await send_pattern_verification_request(src_id)
+        except Exception as _e:
+            log.debug(f"reset_sig verify send: {_e}")
+    asyncio.create_task(_redetect_then_verify())
     return _j({"ok":True})
 
 @_auth
 async def api_pattern_add(request):
-    from services import get_user_channels, get_source, DB_PATH
+    from services import (get_user_channels, get_source, DB_PATH,
+                          send_pattern_verification_request,
+                          reprocess_pending_with_signature, _get_source_signature)
     import aiosqlite
     tg_id = request["tg_user"]["id"]
     src_id = int(request.match_info["src_id"])
@@ -857,8 +878,25 @@ async def api_pattern_add(request):
         cur = await db.execute(
             "INSERT INTO source_patterns(source_id, pattern, auto) VALUES(?,?,0)",
             (src_id, pattern))
+        # Any new pattern invalidates prior verification
+        await db.execute(
+            "UPDATE sources SET pattern_verified=0 WHERE id=?", (src_id,))
         await db.commit()
-        return _j({"ok":True,"id":cur.lastrowid})
+        pat_id = cur.lastrowid
+    # Re-apply patterns to pending posts + DM the user with fresh verification examples
+    import asyncio as _asyncio
+    async def _after_add():
+        try:
+            sig = await _get_source_signature(src_id)
+            await reprocess_pending_with_signature(src["channel_id"], src_id, sig or "")
+        except Exception as _e:
+            log.debug(f"pattern_add reprocess: {_e}")
+        try:
+            await send_pattern_verification_request(src_id)
+        except Exception as _e:
+            log.debug(f"pattern_add verify send: {_e}")
+    _asyncio.create_task(_after_add())
+    return _j({"ok":True,"id":pat_id})
 
 @_auth
 async def api_pattern_delete(request):

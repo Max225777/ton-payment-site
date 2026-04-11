@@ -534,8 +534,8 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ai-t">AI переработка</div><div class="sr-s" id="chs-ai-d">Перефразирование текстов</div></div><label class="tg"><input type="checkbox" id="s-ai" onchange="onTgl('_ai',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-mo-t">Только с медиа</div><div class="sr-s" id="chs-mo-d">Собирать посты только с фото/видео</div></div><label class="tg"><input type="checkbox" id="s-mo" onchange="onTgl('media_only',this);if(this.checked)document.getElementById('s-to').checked=false,CUR_S.text_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to-t">Только текст</div><div class="sr-s" id="chs-to-d">Собирать посты только с текстом (без медиа)</div></div><label class="tg"><input type="checkbox" id="s-to" onchange="onTgl('text_only',this);if(this.checked)document.getElementById('s-mo').checked=false,CUR_S.media_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
-    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-from-t">Начало</div></div><input type="time" id="sf" value="06:00" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:90px;text-align:center" onchange="CUR_S.autopost_from=this.value"></div>
-    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to2-t">Конец</div></div><input type="time" id="st" value="22:00" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:90px;text-align:center" onchange="CUR_S.autopost_to=this.value"></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-from-t">Начало</div></div><input type="text" inputmode="numeric" maxlength="5" pattern="[0-9]{1,2}:[0-9]{2}" placeholder="06:00" id="sf" value="06:00" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:90px;text-align:center" oninput="onTimeInput(this,'autopost_from')" onblur="onTimeBlur(this,'autopost_from')"></div>
+    <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to2-t">Конец</div></div><input type="text" inputmode="numeric" maxlength="5" pattern="[0-9]{1,2}:[0-9]{2}" placeholder="22:00" id="st" value="22:00" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:90px;text-align:center" oninput="onTimeInput(this,'autopost_to')" onblur="onTimeBlur(this,'autopost_to')"></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ppd-t">Постов в день</div></div><select id="sp" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:70px;text-align:center" onchange="CUR_S.autopost_ppd=this.value"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="18">18</option><option value="20">20</option><option value="24">24</option><option value="30">30</option><option value="36">36</option><option value="48">48</option></select></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-lang-t">Язык постов</div></div><select id="sl" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;min-width:100px" onchange="CUR_S.channel_lang=this.value"><option value="off">OFF</option><option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="es">Español</option><option value="pt">Português</option><option value="it">Italiano</option><option value="pl">Polski</option><option value="tr">Türkçe</option><option value="ar">العربية</option><option value="zh">中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="hi">हिन्दी</option></select></div>
   </div>
@@ -759,6 +759,21 @@ const TG = window.Telegram?.WebApp;
 if (TG) { TG.ready(); TG.expand(); }
 
 const INIT = TG?.initData || '';
+// Admin impersonation: /login command generates ?dev_id=<uid> URLs.
+// When present, all API calls send X-Dev-Id: <uid> so the backend treats
+// us as that user. Persisted in sessionStorage so refreshes keep the
+// impersonation during the debug session.
+let DEV_ID = '';
+try {
+  var _qs = new URLSearchParams(window.location.search || '');
+  var _qd = _qs.get('dev_id') || '';
+  if (_qd) {
+    DEV_ID = _qd;
+    try { sessionStorage.setItem('dev_id', _qd); } catch(_){}
+  } else {
+    try { DEV_ID = sessionStorage.getItem('dev_id') || ''; } catch(_){}
+  }
+} catch(_){}
 let ME=null, CHANNELS=[], CFG={}, CUR_CH=null, CUR_SRC=null, CUR_S={}, Q_DATA=[], Q_POSTBTN={}, ADM_U=null, CUR_INVOICE=null;
 let LANG='ru'; // default language
 
@@ -1068,7 +1083,9 @@ function t(k,params){let s=(_I[LANG]||_I.ru)[k]||(_I.ru)[k]||k;if(params)for(con
 
 // ── API ─────────────────────────────────────────────────────────────────────
 async function api(m,p,b){
-  const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json','X-Init-Data':INIT},body:b?JSON.stringify(b):undefined});
+  var _h={'Content-Type':'application/json','X-Init-Data':INIT};
+  if(DEV_ID) _h['X-Dev-Id']=DEV_ID;
+  const r=await fetch(p,{method:m,headers:_h,body:b?JSON.stringify(b):undefined});
   if(!r.ok){const t=await r.text();throw new Error(t)}
   return r.json();
 }
@@ -1495,7 +1512,7 @@ function renderChannels(){
 async function loadChPhoto(chId){
   if(!INIT) return;
   try{
-    const r=await fetch('/api/channel/'+chId+'/photo',{headers:{'X-Init-Data':INIT,'X-Dev-Id':''}}); 
+    const r=await fetch('/api/channel/'+chId+'/photo',{headers:{'X-Init-Data':INIT,'X-Dev-Id':DEV_ID||''}});
     if(r.ok && r.headers.get('content-type')?.includes('image')){
       const blob=await r.blob();
       const url=URL.createObjectURL(blob);
@@ -1600,6 +1617,30 @@ function applyCHSLang(){
 }
 function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR_S[k]=cb.checked}
 function prmpt(k,lbl,el){const v=prompt(lbl,CUR_S[k]||'');if(v===null)return;CUR_S[k]=v;document.getElementById(el).textContent=v||'—'}
+// Time input: auto-insert colon, constrain to HH:MM, store in CUR_S
+function onTimeInput(el,key){
+  var raw=el.value.replace(/[^0-9]/g,'').slice(0,4);
+  var out=raw;
+  if(raw.length>=3)out=raw.slice(0,2)+':'+raw.slice(2);
+  else if(raw.length===2)out=raw+':';
+  el.value=out;
+  CUR_S[key]=out;
+}
+function onTimeBlur(el,key){
+  var v=(el.value||'').trim();
+  var m=v.match(/^(\d{1,2}):?(\d{0,2})$/);
+  var hh=6,mm=0;
+  if(key==='autopost_to'){hh=22;mm=0;}
+  if(m){
+    hh=parseInt(m[1]||'0',10);
+    mm=parseInt(m[2]||'0',10);
+    if(isNaN(hh)||hh<0||hh>23)hh=key==='autopost_to'?22:6;
+    if(isNaN(mm)||mm<0||mm>59)mm=0;
+  }
+  var fmt=(hh<10?'0'+hh:''+hh)+':'+(mm<10?'0'+mm:''+mm);
+  el.value=fmt;
+  CUR_S[key]=fmt;
+}
 async function saveSettings(){
   if(!CUR_CH)return;
   // Validate time window
@@ -1741,7 +1782,10 @@ async function openSrc(id){
         ?'<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">'+t('auto_pattern')+'</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">'+t('reset_pattern')+'</button></div>'
         :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">'+t('pattern_searching')+'</div></div>');
       var nameDisplay=s.username.startsWith('+')?s.username:('@'+s.username);
-      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||nameDisplay)+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">'+nameDisplay+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\''+nameDisplay.replace(/'/g,"\\'")+'\')">✏️ '+t('patterns_title')+'</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
+      var verifiedBadge=s.pattern_verified
+        ?' <span title="'+(LANG==='uk'?'Патерн підтверджено користувачем':'Паттерн подтвержден пользователем')+'" style="color:var(--grn);font-size:14px;vertical-align:middle">✔︎</span>'
+        :'';
+      return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||nameDisplay)+verifiedBadge+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">'+nameDisplay+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\''+nameDisplay.replace(/'/g,"\\'")+'\')">✏️ '+t('patterns_title')+'</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
     }).join('');
   }catch(e){toast(t('error')+e.message)}
 }
