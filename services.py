@@ -568,6 +568,7 @@ async def create_channel(user_id: int, chat_id: int, title: str, username: str, 
         "autopost_from": "06:00",
         "autopost_to": "22:00",
         "autopost_ppd": "6",
+        "autopost_max_age_h": "48",
         "channel_lang": "ru",
         "ai_mode": "on",
     }, ensure_ascii=False)
@@ -2743,6 +2744,39 @@ async def _get_telethon_client():
     log.error("All Telethon sessions unavailable")
     return None, None
 
+
+def _max_age_cutoff(settings: dict):
+    """Return a naive-UTC datetime; messages dated before it should be skipped.
+
+    Reads settings["autopost_max_age_h"] as hours (default 48). A value of
+    0/empty/invalid disables the filter (returns None).
+    """
+    try:
+        raw = settings.get("autopost_max_age_h", "48")
+        hours = int(float(str(raw).strip() or "48"))
+    except Exception:
+        hours = 48
+    if hours <= 0:
+        return None
+    from datetime import datetime as _dt, timedelta as _td
+    return _dt.utcnow() - _td(hours=hours)
+
+
+def _msg_is_older_than(msg, cutoff) -> bool:
+    """True if msg.date (tz-aware or naive) is before cutoff (naive UTC)."""
+    if cutoff is None:
+        return False
+    d = getattr(msg, "date", None)
+    if d is None:
+        return False
+    try:
+        if getattr(d, "tzinfo", None) is not None:
+            d = d.replace(tzinfo=None)
+        return d < cutoff
+    except Exception:
+        return False
+
+
 async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX) -> int:
     """
     Parse one source channel:
@@ -2813,6 +2847,9 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             return 0
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
+        age_cutoff = _max_age_cutoff(settings)
+        if age_cutoff:
+            log.info(f"  @{source['username']}: max-age cutoff = {age_cutoff.isoformat()} UTC")
 
         # Перевіряємо чи є вже пости в черзі для цього джерела
         pending_count = await count_pending_posts(channel_id)
@@ -2826,6 +2863,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
         all_messages  = []
         fetched_total = 0
         offset_id     = 0  # 0 = з найновішого
+        hit_age_wall  = False
 
         while fetched_total < MAX_FETCH:
             try:
@@ -2846,6 +2884,13 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             offset_id = batch[-1].id  # наступний батч іде ще глибше (старіші)
 
             new_in_batch = [m for m in batch if m.id not in parsed_ids]
+            # Drop anything older than the configured max-age cutoff.
+            if age_cutoff is not None:
+                kept = [m for m in new_in_batch if not _msg_is_older_than(m, age_cutoff)]
+                if len(kept) < len(new_in_batch):
+                    # Batch contains posts older than cutoff → we've walked past the allowed window.
+                    hit_age_wall = True
+                new_in_batch = kept
             all_messages.extend(new_in_batch)
 
             truly_new = len(all_messages)
@@ -2853,6 +2898,9 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
 
             if truly_new >= TARGET_NEW * 3:
                 break  # вистачає кандидатів з запасом на AI-відсів (3x)
+            if hit_age_wall:
+                log.info(f"  reached max-age wall, stop fetching older batches")
+                break
             if len(batch) < FETCH_BATCH:
                 if truly_new == 0:
                     log.info("  no new posts — end of history")
@@ -3143,6 +3191,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
 
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
+        age_cutoff = _max_age_cutoff(settings)
 
         # Persistent dedup via seen_messages (survives midnight cleanup)
         parsed_ids, parsed_grouped_ids = await load_seen_message_ids(channel_id, source["id"])
@@ -3152,6 +3201,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
         all_messages = []
         fetched_total = 0
         offset_id = 0
+        hit_age_wall = False
 
         while fetched_total < 5000:
             try:
@@ -3164,8 +3214,15 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
             fetched_total += len(batch)
             offset_id = batch[-1].id
             new_in_batch = [m for m in batch if m.id not in parsed_ids]
+            if age_cutoff is not None:
+                kept = [m for m in new_in_batch if not _msg_is_older_than(m, age_cutoff)]
+                if len(kept) < len(new_in_batch):
+                    hit_age_wall = True
+                new_in_batch = kept
             all_messages.extend(new_in_batch)
             if len(all_messages) >= TARGET_NEW * 3:
+                break
+            if hit_age_wall:
                 break
             if len(batch) < FETCH_BATCH:
                 break
@@ -3353,9 +3410,13 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
         processed_groups: set = set()
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
+        age_cutoff = _max_age_cutoff(settings)
         candidates = []
         for msg in reversed(batch):
             if msg.id in published_ids:
+                continue
+            if _msg_is_older_than(msg, age_cutoff):
+                # Honour user's max-age setting even in deep-history mode.
                 continue
             has_text = bool((getattr(msg, "text", None) or "").strip())
             if not msg.media and not has_text:
@@ -3671,7 +3732,8 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
         # but we pass the messages directly to avoid re-fetching
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
-    
+        age_cutoff = _max_age_cutoff(settings)
+
         from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
         from telethon.extensions import html as tl_html
 
@@ -3695,6 +3757,8 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
                 continue
             if msg.id in published_ids_deep:
                 continue  # already published
+            if _msg_is_older_than(msg, age_cutoff):
+                continue  # Respect user's max-age setting even in deep mode.
             if msg.grouped_id and msg.grouped_id in processed_groups:
                 continue
 
