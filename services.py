@@ -1905,7 +1905,7 @@ def _cut_source_signature(text: str, signature: str) -> str:
         s = _r.sub(r'<[^>]+>', '', s)
         s = _r.sub(r'https?://\S+', '', s)
         s = _r.sub(r'@[A-Za-z0-9_]{3,}', '', s)
-        s = _r.sub(r'[()|\-]', ' ', s)  # parens, pipes, dashes → space
+        s = _r.sub(r'[()|\-—–·•]', ' ', s)  # parens, pipes, dashes, bullets → space
         s = _r.sub(r'\s+', ' ', s)
         return s.strip()
 
@@ -1995,6 +1995,32 @@ def _cut_source_signature(text: str, signature: str) -> str:
             prefix_newlines = text_plain[:idx].count('\n')
             if prefix_newlines < len(text_lines):
                 result = '\n'.join(text_lines[:prefix_newlines]).strip()
+                if len(result) > 5:
+                    return result
+
+    # Fallback: flatten all whitespace (handles different line breaks between sig and text)
+    # Pattern stored as 1 line but appears as 3 lines in text, or vice versa
+    _sig_flat = _r.sub(r'\s+', ' ', sig_plain).strip()
+    _text_flat = _r.sub(r'\s+', ' ', text_plain).strip()
+    if _sig_flat and len(_sig_flat) > 3:
+        _fidx = _text_flat.rfind(_sig_flat)
+        if _fidx >= 0 and _fidx > len(_text_flat) * 0.05:
+            # Walk original text to map back: count non-ws chars to find line
+            _char_pos = 0
+            _target_line = 0
+            _text_norm_so_far = []
+            for _li, _tl in enumerate(text_lines):
+                _tl_plain = _plain(_tl).lower()
+                if _text_norm_so_far:
+                    _text_norm_so_far.append(' ')
+                _text_norm_so_far.append(_tl_plain)
+                _joined = ''.join(_text_norm_so_far)
+                _joined_flat = _r.sub(r'\s+', ' ', _joined).strip()
+                if len(_joined_flat) >= _fidx:
+                    _target_line = _li
+                    break
+            if _target_line > 0:
+                result = '\n'.join(text_lines[:_target_line]).strip()
                 if len(result) > 5:
                     return result
 
@@ -2112,17 +2138,54 @@ def _clean_links(text, source_signature: str = "", extra_patterns: list = None):
         text = '\n'.join(text_lines).strip()
         # Also try the multi-strategy rfind/cut approach for each pattern
         text = _cut_source_signature(text, _pat)
-        # And a simple case-insensitive substring cut as a final safety net
-        _pat_norm = _r.sub(r'\s+', ' ', _pat.strip())
-        if _pat_norm and len(_pat_norm) > 3:
-            _text_norm = _r.sub(r'\s+', ' ', text)
-            _idx = _text_norm.lower().find(_pat_norm.lower())
-            if _idx >= 0:
-                # Rough mapping: find the same phrase in original text (first 40 chars)
-                _probe = _pat_norm[:40].lower()
-                _raw_idx = text.lower().find(_probe)
-                if _raw_idx >= 0:
-                    text = (text[:_raw_idx] + text[_raw_idx + len(_pat_norm):]).strip()
+        # Normalized whitespace match: collapse ALL whitespace (including \n) to single space
+        # Also strip |, -, () — same as _plain() — to handle formatting differences
+        # This handles: pattern is 1 line but post has it in 3 lines, or vice versa
+        def _flatten(s):
+            s = _r.sub(r'<[^>]+>', '', s)
+            s = _r.sub(r'https?://\S+', '', s)
+            s = _r.sub(r'@[A-Za-z0-9_]{3,}', '', s)
+            s = _r.sub(r'[()|\-—–·•]', ' ', s)  # hyphens, dashes, pipes, bullets
+            s = _r.sub(r'\s+', ' ', s)
+            return s.strip().lower()
+        _pat_flat = _flatten(_pat)
+        if _pat_flat and len(_pat_flat) > 3:
+            _text_flat = _flatten(text)
+            _idx_flat = _text_flat.find(_pat_flat)
+            if _idx_flat >= 0:
+                # Map position from flattened back to original text:
+                # Walk original text char-by-char, skipping HTML tags, collapsing
+                # whitespace and junk chars (same transforms as _flatten)
+                _JUNK = set('()|-—–·•')
+                _orig_start = _orig_end = None
+                _fi = 0  # position in flattened
+                _in_ws = False
+                _in_tag = False
+                for _oi, _oc in enumerate(text):
+                    if _oc == '<':
+                        _in_tag = True; continue
+                    if _in_tag:
+                        if _oc == '>': _in_tag = False
+                        continue
+                    if _oc in _JUNK or _oc in ' \t\n\r\xa0':
+                        if _in_ws:
+                            continue
+                        _in_ws = True
+                    else:
+                        _in_ws = False
+                    if _fi == _idx_flat and _orig_start is None:
+                        _orig_start = _oi
+                    _fi += 1
+                    if _fi == _idx_flat + len(_pat_flat):
+                        _orig_end = _oi + 1
+                        break
+                if _orig_start is not None and _orig_end is not None:
+                    # Expand to cover full lines (don't leave partial lines)
+                    while _orig_start > 0 and text[_orig_start - 1] != '\n':
+                        _orig_start -= 1
+                    while _orig_end < len(text) and text[_orig_end] != '\n':
+                        _orig_end += 1
+                    text = (text[:_orig_start] + text[_orig_end:]).strip()
     return text
 
 
