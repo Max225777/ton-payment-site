@@ -1666,6 +1666,14 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         if len(_plain) > 20:
             texts.append(f'[{_i+1}] {_plain}')
     if len(texts) < 4:
+        log.info(f'detect_signature @{username}: too few text posts ({len(texts)})')
+        # Save empty string so UI knows detection finished (no pattern)
+        try:
+            async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
+                await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
+                await _db.commit()
+        except Exception:
+            pass
         return ''
     _posts = '\n\n'.join(texts[:25])
     # Statistical pre-check: find lines appearing in 50%+ of posts (check last 5 lines)
@@ -1718,19 +1726,34 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         _res = (await _call_ai(_sys, _usr)).strip()
         _clean = _res.strip('"').strip("'")
         if _clean.upper() == 'NONE' or len(_clean) < 3:
-            log.info(f'detect_signature @{username}: no pattern')
+            log.info(f'detect_signature @{username}: no pattern (AI said NONE)')
+            # Save empty string so UI knows detection finished
+            async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
+                await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
+                await _db.commit()
             return ''
         # Validate: any signature line must appear in at least 40% of posts
+        # Use flattened comparison (strips |, -, —, punctuation diffs)
+        def _flat_cmp(s):
+            s = _re.sub(r'[()|\-—–·•]', ' ', s)
+            s = _re.sub(r'\s+', ' ', s)
+            return s.strip().lower()
         _sig_check_lines = [l.strip() for l in _clean.splitlines() if len(l.strip()) >= 4]
         _check_line = _sig_check_lines[0][:60] if _sig_check_lines else _clean.strip()[:60]
-        _appear_count = sum(1 for _t in texts if _check_line.lower() in _t.lower())
+        _check_flat = _flat_cmp(_check_line)
+        _appear_count = sum(1 for _t in texts if _check_flat in _flat_cmp(_t))
         if _appear_count < max(2, int(len(texts) * 0.4)) and len(_sig_check_lines) > 1:
             for _sl in _sig_check_lines[1:]:
-                _cnt = sum(1 for _t in texts if _sl[:60].lower() in _t.lower())
+                _sl_flat = _flat_cmp(_sl[:60])
+                _cnt = sum(1 for _t in texts if _sl_flat in _flat_cmp(_t))
                 if _cnt > _appear_count:
                     _appear_count = _cnt
         if _appear_count < max(2, int(len(texts) * 0.4)):
-            log.info(f'detect_signature @{username}: AI result appears only {_appear_count}/{len(texts)} times — rejected')
+            log.info(f'detect_signature @{username}: AI result appears only {_appear_count}/{len(texts)} times — rejected (AI returned: {repr(_clean[:100])})')
+            # Save empty string so UI knows detection finished
+            async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
+                await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
+                await _db.commit()
             return ''
         log.info(f'detect_signature @{username}: found ({_clean.count(chr(10))+1} lines): {repr(_clean[:120])}')
         async with aiosqlite.connect(DB_PATH, timeout=10) as _db:

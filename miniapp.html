@@ -837,7 +837,7 @@ ru:{
   sources_title:'Источники', no_sources:'Нет источников', add_source:'Добавить источник',
   source_added:'✅ Источник добавлен! Ищем паттерн (~2-3 мин)...',
   enter_source:'Введи username источника', delete_source:'Удалить источник?',
-  deleted:'Удалено', auto_pattern:'🤖 Авто-паттерн', pattern_searching:'⏳ Ищем паттерн... обычно 2-3 мин',
+  deleted:'Удалено', auto_pattern:'🤖 Авто-паттерн', pattern_searching:'⏳ Ищем паттерн... обычно 2-3 мин', pattern_not_found:'✅ Паттерн не обнаружен — посты чистые',
   reset_pattern:'✕ Сбросить', reset_pattern_confirm:'Сбросить авто-паттерн? Поиск заново ~2-3 мин.',
   pattern_reset:'✅ Паттерн сброшен, ищем заново (~2-3 мин)', patterns_title:'Паттерны',
   patterns_desc:'Бот автоматически находит повторяющийся текст в конце постов и вырезает его. Можно добавить вручную.',
@@ -993,7 +993,7 @@ uk:{
   sources_title:'Джерела', no_sources:'Немає джерел', add_source:'Додати джерело',
   source_added:'✅ Джерело додано! Шукаємо паттерн (~2-3 хв)...',
   enter_source:'Введи username джерела', delete_source:'Видалити джерело?',
-  deleted:'Видалено', auto_pattern:'🤖 Авто-паттерн', pattern_searching:'⏳ Шукаємо паттерн... зазвичай 2-3 хв',
+  deleted:'Видалено', auto_pattern:'🤖 Авто-паттерн', pattern_searching:'⏳ Шукаємо паттерн... зазвичай 2-3 хв', pattern_not_found:'✅ Паттерн не знайдено — пости чисті',
   reset_pattern:'✕ Скинути', reset_pattern_confirm:'Скинути авто-паттерн? Пошук заново ~2-3 хв.',
   pattern_reset:'✅ Паттерн скинуто, шукаємо заново (~2-3 хв)', patterns_title:'Паттерни',
   patterns_desc:'Бот автоматично знаходить текст що повторюється в кінці постів і вирізає його. Можна додати вручну.',
@@ -1827,6 +1827,7 @@ async function openSrc(id){
     }
     el.innerHTML=topBanner+srcs.map(function(s){
       const hasSig=s.signature&&s.signature.length>2;
+      const sigChecked=s.signature!==null&&s.signature!==undefined; // null=searching, ''=not found
       const js=s.join_status;
       var statusHtml='';
       if(js==='pending'){
@@ -1836,9 +1837,18 @@ async function openSrc(id){
       } else if(js==='error'){
         statusHtml='<div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:#f55;font-weight:600">'+(LANG==='uk'?'❌ Помилка приєднання':'❌ Ошибка присоединения')+'</div></div>';
       }
-      const sigHtml=js==='pending'||js==='expired'||js==='error'?statusHtml:(hasSig
-        ?'<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">'+t('auto_pattern')+'</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">'+t('reset_pattern')+'</button></div>'
-        :'<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">'+t('pattern_searching')+'</div></div>');
+      var sigHtml;
+      if(js==='pending'||js==='expired'||js==='error'){
+        sigHtml=statusHtml;
+      } else if(hasSig){
+        sigHtml='<div style="background:rgba(45,212,160,.08);border:1px solid rgba(45,212,160,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:10px;color:var(--grn);font-weight:700;margin-bottom:4px">'+t('auto_pattern')+'</div><div style="font-size:12px;color:var(--tx);word-break:break-word">'+s.signature.substring(0,120)+(s.signature.length>120?'…':'')+'</div><button class="btn bd" style="margin-top:8px;padding:5px 12px;font-size:11px" onclick="resetSig('+s.id+')">'+t('reset_pattern')+'</button></div>';
+      } else if(sigChecked){
+        // Detection completed but nothing found
+        sigHtml='<div style="background:rgba(130,130,130,.07);border:1px solid rgba(130,130,130,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--mu)">'+t('pattern_not_found')+'</div></div>';
+      } else {
+        // Still searching (signature===null)
+        sigHtml='<div style="background:rgba(245,200,66,.07);border:1px solid rgba(245,200,66,.2);border-radius:10px;padding:10px 12px;margin-top:8px"><div style="font-size:11px;color:var(--yel)">'+t('pattern_searching')+'</div></div>';
+      }
       var nameDisplay=s.username.startsWith('+')?s.username:('@'+s.username);
       return '<div class="card" style="padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(s.title||nameDisplay)+'</div>'+(s.title?'<div style="font-size:11px;color:var(--mu);margin-top:1px">'+nameDisplay+'</div>':'')+'</div><div style="display:flex;gap:8px;flex-shrink:0;margin-left:10px"><button class="btn bg" style="padding:7px 12px;font-size:11px" onclick="openPat('+s.id+',\''+nameDisplay.replace(/'/g,"\\'")+'\')">✏️ '+t('patterns_title')+'</button><button class="btn bd" style="padding:7px 10px" onclick="delSrc('+s.id+')">🗑</button></div></div>'+sigHtml+'</div>';
     }).join('');

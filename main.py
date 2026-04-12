@@ -767,8 +767,9 @@ async def api_sources(request):
     for s in sources:
         async with aiosqlite.connect(DB_PATH, timeout=10) as db:
             pats = await _fetchall(db, "SELECT * FROM source_patterns WHERE source_id=?", (s["id"],))
+        _sig_val = s.get("promo_signature")  # None=still searching, ''=not found, 'text'=found
         result.append({**s, "patterns":[{**p,"auto":bool(p.get("auto",0))} for p in pats],
-                       "signature":s.get("promo_signature",""),
+                       "signature": _sig_val,
                        })
     return _j(result)
 
