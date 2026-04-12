@@ -1764,123 +1764,6 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
 
 
 
-async def _detect_source_signature(source_id: int, messages: list) -> str:
-    """
-    Analyze last N messages from a source to find promo footer.
-    Detects: @username links, t.me/ links, social CTAs, "follow us", "join our" etc.
-    Uses both statistical analysis AND AI verification.
-    Saves result to sources.promo_signature.
-    """
-    import re as _r
-
-    def strip_html(t):
-        return _r.sub(r'<[^>]+>', '', t or '').strip()
-
-    def get_last_lines(text: str, n: int = 5) -> list:
-        lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
-        return lines[-n:] if len(lines) >= n else lines
-
-    # Promo keyword patterns (any language)
-    PROMO_RE = _r.compile(
-        r'(@[A-Za-z0-9_]{3,}|t\.me/|telegram\.me/|instagram\.com/|tiktok\.com/|youtube\.com/|'
-        r'twitter\.com/|x\.com/|facebook\.com/|vk\.com/|discord\.gg/|'
-        r'підпис|підпишись|підписуйся|подписывайся|підписатись|subscribe|follow us|join us|'
-        r'наш канал|наш discord|наш telegram|читай тут|читайте на|більше на|'
-        r'more at|check out|перейди|перейдіть|переходь|заходь|заходьте|жми|натисни)',
-        _r.IGNORECASE
-    )
-
-    samples = []
-    for msg in messages[:40]:
-        raw = getattr(msg, 'message', '') or getattr(msg, 'text', '') or ''
-        plain = strip_html(raw).strip()
-        if len(plain) > 30:
-            samples.append(plain)
-
-    if len(samples) < 4:
-        return ''
-
-    threshold = max(3, int(len(samples) * 0.5))
-
-    # Statistical: find repeating last lines (check last 5)
-    candidate_counts: dict = {}
-    for s in samples:
-        last = get_last_lines(s, 5)
-        for line in last:
-            if len(line) >= 6:
-                candidate_counts[line] = candidate_counts.get(line, 0) + 1
-
-    best = ''
-    best_count = 0
-    for candidate, count in sorted(candidate_counts.items(), key=lambda x: -x[1]):
-        if count >= threshold:
-            # Prefer promo lines even if slightly less common
-            is_promo = bool(PROMO_RE.search(candidate))
-            score = count + (3 if is_promo else 0)
-            if score > best_count and len(candidate) > 4:
-                best = candidate
-                best_count = score
-
-    # Try multi-line combos 2-5 lines (strip URLs before comparing for better matching)
-    def _strip_urls(s):
-        s = _r.sub(r'https?://\S+', '', s)
-        s = _r.sub(r'\([^)]*\)', '', s)  # (link) → empty
-        return _r.sub(r'\s+', ' ', s).strip()
-
-    for _n_combo in range(2, 6):  # 2,3,4,5 line combos
-        for s in samples:
-            last_n = get_last_lines(s, _n_combo)
-            if len(last_n) == _n_combo:
-                combo = '\n'.join(last_n)
-                combo_clean = _strip_urls(combo)
-                if len(combo_clean) >= 8:
-                    cnt = sum(1 for ss in samples if _strip_urls('\n'.join(get_last_lines(ss, _n_combo))) == combo_clean)
-                    is_promo = bool(PROMO_RE.search(combo))
-                    if cnt >= threshold - 1 and (is_promo or cnt >= threshold):
-                        # Prefer longer (more lines) patterns
-                        if combo.count('\n') > best.count('\n') or (len(combo) > len(best) and combo.count('\n') >= best.count('\n')):
-                            best = combo
-
-    if len(best) < 6:
-        # AI fallback: ask AI to find promo footer
-        try:
-            sample_texts = '\n---\n'.join(s[-200:] for s in samples[:8])
-            ai_prompt = (
-                f"Analyze these {len(samples[:8])} Telegram post endings and find the REPEATING promotional footer/signature "
-                f"(call to action, channel link, social media CTA, subscribe request, etc.).\n\n"
-                f"Posts endings:\n{sample_texts}\n\n"
-                f"Reply with ONLY the exact footer text that repeats, or 'NONE' if no clear pattern."
-            )
-            ai_result = await _call_ai(
-                "You analyze Telegram posts to find repeating promo footers. Reply with ONLY the exact repeating footer text, or 'NONE'.",
-                ai_prompt
-            )
-            if ai_result and ai_result.strip().upper() != 'NONE' and len(ai_result.strip()) > 4:
-                best = ai_result.strip()
-                log.info(f"  source {source_id}: AI detected signature: {repr(best[:60])}")
-        except Exception as _ae:
-            log.debug(f"  source {source_id}: AI signature detection failed: {_ae}")
-
-    if len(best) < 4:
-        return ''
-
-    log.info(f"  source {source_id}: detected promo signature: {repr(best[:60])}")
-
-    # Save to DB
-    try:
-        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-            await db.execute(
-                "UPDATE sources SET promo_signature=? WHERE id=?",
-                (best.strip(), source_id)
-            )
-            await db.commit()
-    except Exception as _e:
-        log.warning(f"  source {source_id}: could not save promo_signature: {_e}")
-        return ''
-    log.info(f"  source {source_id}: detected promo signature: {repr(best.strip())}")
-    return best.strip()
-
-
 async def _get_source_signature(source_id: int) -> str:
     """Load saved promo_signature for a source. Safe if column missing."""
     try:
@@ -2984,15 +2867,8 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             except Exception:
                 return (getattr(m, "text", None) or "").strip()
 
-        # Auto-detect promo signature from messages
-        existing_sig = await _get_source_signature(source["id"])
-        if len(messages) >= 5:
-            new_sig = await _detect_source_signature(source["id"], messages)
-            if new_sig:
-                existing_sig = new_sig
-            elif not existing_sig:
-                existing_sig = await _get_source_signature(source["id"])
-        source_signature = existing_sig
+        # Use saved promo signature (detected when source was added)
+        source_signature = await _get_source_signature(source["id"])
         # Manual user-added patterns (independent from auto signature)
         source_extra_patterns = await _get_source_patterns_list(source["id"])
 
