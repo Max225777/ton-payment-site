@@ -1641,15 +1641,20 @@ def _strip_footer_lines(text: str) -> str:
 
 
 async def detect_and_save_signature_for_new_source(source_id: int, username: str) -> str:
+    """Parse last 10 posts from a source channel (text only), send them to AI
+    to find a repeating promo footer/signature. The pattern is usually at the
+    end of most posts (1-5 lines). Once found it is saved and will be cut
+    from every post during parsing before rephrasing etc."""
     import re as _re
     def strip_html(t):
         return _re.sub(r'<[^>]+>', '', t or '').strip()
+
     client, _num = await _get_telethon_client()
     if not client:
         return ''
     try:
         entity = await client.get_entity('@' + username.lstrip('@'))
-        messages = await client.get_messages(entity, limit=25)
+        messages = await client.get_messages(entity, limit=10)
         for _m in messages:
             try: _m.media = None
             except: pass
@@ -1659,15 +1664,16 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         try: await client.disconnect()
         except: pass
         return ''
-    texts = []
-    for _i, _msg in enumerate(messages):
+
+    # Collect plain text of each post
+    posts = []
+    for _msg in messages:
         _raw = (getattr(_msg, 'message', '') or getattr(_msg, 'text', '') or '').strip()
         _plain = strip_html(_raw)
         if len(_plain) > 20:
-            texts.append(f'[{_i+1}] {_plain}')
-    if len(texts) < 4:
-        log.info(f'detect_signature @{username}: too few text posts ({len(texts)})')
-        # Save empty string so UI knows detection finished (no pattern)
+            posts.append(_plain)
+    if len(posts) < 3:
+        log.info(f'detect_signature @{username}: too few text posts ({len(posts)})')
         try:
             async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
                 await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
@@ -1675,97 +1681,86 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         except Exception:
             pass
         return ''
-    _posts = '\n\n'.join(texts[:25])
-    # Statistical pre-check: find lines appearing in 50%+ of posts (check last 5 lines)
-    import re as _re2
-    _line_counts: dict = {}
-    for _t in texts:
-        _lines = [l.strip() for l in _t.splitlines() if len(l.strip()) > 5]
-        for _line in _lines[-5:]:  # last 5 lines — patterns can be multi-line
-            _line_counts[_line] = _line_counts.get(_line, 0) + 1
-    _threshold = max(3, int(len(texts) * 0.5))
-    _stat_hint = [l for l, c in sorted(_line_counts.items(), key=lambda x:-x[1]) if c >= _threshold]
 
-    # Also find multi-line combos (2-5 line blocks at the end)
-    _multi_line_hints = []
-    for _n in range(2, 6):  # 2,3,4,5 lines
-        _combo_counts: dict = {}
-        for _t in texts:
-            _lines = [l.strip() for l in _t.splitlines() if l.strip()]
-            if len(_lines) >= _n:
-                _combo = '\n'.join(_lines[-_n:])
-                _combo_counts[_combo] = _combo_counts.get(_combo, 0) + 1
-        for _combo, _cnt in _combo_counts.items():
-            if _cnt >= max(2, int(len(texts) * 0.4)):
-                _multi_line_hints.append((_combo, _cnt))
-    # Sort by line count descending (prefer longer patterns)
-    _multi_line_hints.sort(key=lambda x: (-x[0].count('\n'), -x[1]))
+    # Build numbered post list for AI
+    _numbered = '\n\n---\n\n'.join(f'Пост {i+1}:\n{p}' for i, p in enumerate(posts))
 
-    _hint_str = ', '.join(repr(x[:80]) for x in _stat_hint[:5]) if _stat_hint else 'не знайдено статистично'
-    _multi_hint_str = ''
-    if _multi_line_hints:
-        _multi_hint_str = '\nМультирядкові блоки (останні рядки що повторюються як блок): ' + \
-            ', '.join(f'{repr(c[:100])} ({n} разів)' for c, n in _multi_line_hints[:3])
+    _sys = (
+        'Ты анализатор Telegram-каналов. Тебе дают тексты последних постов канала. '
+        'Твоя задача — найти повторяющийся рекламный подпись/футер (pattern), '
+        'который стоит В КОНЦЕ большинства постов (50%+).\n\n'
+        'Что это может быть:\n'
+        '- Название канала с эмодзи (напр. "📢 Канал Новостей")\n'
+        '- Ссылка t.me/ или @username\n'
+        '- Призыв подписаться ("Подписаться", "Подписывайся", "Прислать новость")\n'
+        '- Ссылки на соцсети (Instagram, TikTok, YouTube, MAX, VK и т.д.)\n'
+        '- Метки типа "18+", "БУНКЕР", "ЖЕСТЬ"\n'
+        '- Комбинация из 1-5 строк: напр. строка с эмодзи + строка с ссылкой + призыв\n\n'
+        'ВАЖНО:\n'
+        '- Pattern обычно находится в самом конце поста (последние 1-5 строк)\n'
+        '- Он ПОВТОРЯЕТСЯ одинаково или почти одинаково в большинстве постов\n'
+        '- Ответь ТОЧНОЙ КОПИЕЙ текста pattern как он есть в постах, строка за строкой\n'
+        '- НЕ перефразируй, НЕ сокращай — просто скопируй\n'
+        '- Если pattern не найден — ответь NONE\n'
+        '- Ответь ТОЛЬКО текстом pattern (или NONE). Без пояснений.'
+    )
+    _usr = f'Вот {len(posts)} последних постов канала @{username}:\n\n{_numbered}'
 
-    _sys = ('Ти аналізатор Telegram-каналів для бота автопостингу. '
-            'Знайди рекламний підпис/footer що ПОВТОРЮЄТЬСЯ як мінімум у половині (50%+) постів. '
-            'ДУЖЕ ВАЖЛИВО: підпис може бути від 1 до 5 рядків! Часто це КІЛЬКА рядків разом: '
-            'наприклад рядок з емоджі/тегом каналу + рядок з посиланням + заклик підписатись. '
-            'Поверни ВЕСЬ блок повторюваних рядків (всі рядки підпису), а не лише один рядок. '
-            'НЕ обирай текст що зустрічається лише в 1-2 постах. '
-            'Може бути: @username, t.me/, max.me/, max.ru/, Instagram/TikTok/YouTube/Discord, '
-            'заклик підписатись/перейти/слідкувати, "18+", "БУНКЕР", "ПОДПИСАТЬСЯ" тощо. '
-            'Відповідай ТІЛЬКИ точним текстом підпису (як є у постах, рядок за рядком). '
-            'Якщо не знайдено — NONE.')
-    _usr = (f'Ось {len(texts)} постів каналу @{username}.\n'
-            f'Статистичний аналіз (рядки що зустрічаються у 50%+ постів): {_hint_str}'
-            f'{_multi_hint_str}\n\n'
-            f'Знайди точний рекламний підпис (може бути 1-5 рядків) '
-            f'що зустрічається у більшості постів:\n\n{_posts}')
     try:
         _res = (await _call_ai(_sys, _usr)).strip()
-        _clean = _res.strip('"').strip("'")
+        _clean = _res.strip('"').strip("'").strip('`')
         if _clean.upper() == 'NONE' or len(_clean) < 3:
-            log.info(f'detect_signature @{username}: no pattern (AI said NONE)')
-            # Save empty string so UI knows detection finished
+            log.info(f'detect_signature @{username}: AI said NONE')
             async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
                 await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
                 await _db.commit()
             return ''
-        # Validate: any signature line must appear in at least 40% of posts
-        # Use flattened comparison (strips |, -, —, punctuation diffs)
-        def _flat_cmp(s):
-            s = _re.sub(r'[()|\-—–·•]', ' ', s)
+
+        # Validate: at least one line of the result must appear in 30%+ of posts
+        def _flat(s):
+            s = _re.sub(r'[()|\-—–·•\"\'«»]', ' ', s)
             s = _re.sub(r'\s+', ' ', s)
             return s.strip().lower()
-        _sig_check_lines = [l.strip() for l in _clean.splitlines() if len(l.strip()) >= 4]
-        _check_line = _sig_check_lines[0][:60] if _sig_check_lines else _clean.strip()[:60]
-        _check_flat = _flat_cmp(_check_line)
-        _appear_count = sum(1 for _t in texts if _check_flat in _flat_cmp(_t))
-        if _appear_count < max(2, int(len(texts) * 0.4)) and len(_sig_check_lines) > 1:
-            for _sl in _sig_check_lines[1:]:
-                _sl_flat = _flat_cmp(_sl[:60])
-                _cnt = sum(1 for _t in texts if _sl_flat in _flat_cmp(_t))
-                if _cnt > _appear_count:
-                    _appear_count = _cnt
-        if _appear_count < max(2, int(len(texts) * 0.4)):
-            log.info(f'detect_signature @{username}: AI result appears only {_appear_count}/{len(texts)} times — rejected (AI returned: {repr(_clean[:100])})')
-            # Save empty string so UI knows detection finished
+
+        _sig_lines = [l.strip() for l in _clean.splitlines() if len(l.strip()) >= 3]
+        _best_count = 0
+        for _sl in _sig_lines:
+            _cnt = sum(1 for p in posts if _flat(_sl[:60]) in _flat(p))
+            if _cnt > _best_count:
+                _best_count = _cnt
+
+        _min_appear = max(2, int(len(posts) * 0.3))
+        if _best_count < _min_appear:
+            log.info(f'detect_signature @{username}: AI result appears only {_best_count}/{len(posts)} — rejected (returned: {repr(_clean[:120])})')
             async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
                 await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
                 await _db.commit()
             return ''
-        log.info(f'detect_signature @{username}: found ({_clean.count(chr(10))+1} lines): {repr(_clean[:120])}')
+
+        _final = _clean
+    except Exception as _ae:
+        log.warning(f'detect_signature @{username}: AI error: {_ae}')
+        _final = ''
+
+    if not _final or len(_final) < 3:
+        log.info(f'detect_signature @{username}: no pattern found')
         async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
-            await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', (_clean, source_id))
+            await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', ('', source_id))
+            await _db.commit()
+        return ''
+
+    # --- Save the found pattern ---
+    log.info(f'detect_signature @{username}: found ({_final.count(chr(10))+1} lines): {repr(_final[:120])}')
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
+            await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', (_final, source_id))
             _src_row = await _fetchone(_db, 'SELECT channel_id FROM sources WHERE id=?', (source_id,))
             await _db.commit()
         if _src_row:
-            await reprocess_pending_with_signature(_src_row['channel_id'], source_id, _clean)
-        return _clean
-    except Exception as _ae:
-        log.warning(f'detect_signature @{username}: AI error: {_ae}')
-        return ''
+            await reprocess_pending_with_signature(_src_row['channel_id'], source_id, _final)
+    except Exception as _se:
+        log.warning(f'detect_signature @{username}: save error: {_se}')
+    return _final
 
 
 
