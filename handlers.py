@@ -40,6 +40,8 @@ from services import (
     log_event,
     parse_channel_sources,
     save_last_published,
+    get_source, set_pattern_verified, send_pattern_verification_request,
+    DB_PATH, _fetchone,
 )
 
 log = logging.getLogger(__name__)
@@ -144,6 +146,11 @@ class AdminStates(StatesGroup):
     broadcast   = State()
     adj_amount  = State()
     set_sub_days = State()
+
+
+class PatternStates(StatesGroup):
+    """FSM for pattern verification correction flow."""
+    waiting_correction = State()
 
 
 # ─── KEYBOARDS ────────────────────────────────────────────────────────────────
@@ -750,3 +757,191 @@ async def ap_skip(cq: CallbackQuery, bot: Bot):
     lang = await _ul(cq.from_user.id)
     await bot.send_message(cq.from_user.id, uts(lang, "ap_skipped"), parse_mode=ParseMode.HTML)
     await cq.answer()
+
+
+# ─── PATTERN VERIFICATION FLOW ────────────────────────────────────────────────
+
+async def _user_owns_source(tg_id: int, src_id: int) -> bool:
+    """Verify that the given Telegram user owns the channel that owns this source."""
+    try:
+        src = await get_source(src_id)
+        if not src:
+            return False
+        channels = await get_user_channels(tg_id)
+        return any(c["id"] == src["channel_id"] for c in channels)
+    except Exception:
+        return False
+
+
+@router.callback_query(F.data.startswith("patv_ok:"))
+async def patv_ok(cq: CallbackQuery, state: FSMContext):
+    """User confirmed cleaning pattern looks correct → mark source as verified."""
+    try:
+        src_id = int(cq.data.split(":")[1])
+    except Exception:
+        await cq.answer("❌", show_alert=True); return
+    if not await _user_owns_source(cq.from_user.id, src_id):
+        await cq.answer("⛔", show_alert=True); return
+    await set_pattern_verified(src_id, True)
+    await state.clear()
+    src = await get_source(src_id)
+    name = (src.get("username") or src.get("title") or f"#{src_id}") if src else f"#{src_id}"
+    try:
+        await cq.message.edit_text(
+            f"✅ <b>Патерн підтверджено</b>\n📡 Джерело: <b>@{name}</b>\n\n"
+            "Відтепер біля цього джерела буде зелена галочка.",
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest:
+        pass
+    await cq.answer("✅ Підтверджено")
+
+
+@router.callback_query(F.data.startswith("patv_cancel:"))
+async def patv_cancel(cq: CallbackQuery, state: FSMContext):
+    """User cancelled the verification dialog."""
+    try:
+        src_id = int(cq.data.split(":")[1])
+    except Exception:
+        await cq.answer("❌", show_alert=True); return
+    if not await _user_owns_source(cq.from_user.id, src_id):
+        await cq.answer("⛔", show_alert=True); return
+    await state.clear()
+    try:
+        await cq.message.edit_text("❌ Перевірку скасовано.")
+    except TelegramBadRequest:
+        pass
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("patv_fix:"))
+async def patv_fix(cq: CallbackQuery, state: FSMContext):
+    """User wants to provide a correction pattern."""
+    try:
+        src_id = int(cq.data.split(":")[1])
+    except Exception:
+        await cq.answer("❌", show_alert=True); return
+    if not await _user_owns_source(cq.from_user.id, src_id):
+        await cq.answer("⛔", show_alert=True); return
+    await state.update_data(patv_src_id=src_id)
+    await state.set_state(PatternStates.waiting_correction)
+    try:
+        await cq.message.edit_text(
+            "✏️ Надішліть текст/фрагмент, який треба вирізати з постів цього джерела.\n"
+            "Наступне текстове повідомлення буде додано як патерн.",
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest:
+        pass
+    await cq.answer()
+
+
+@router.message(PatternStates.waiting_correction)
+async def patv_correction_input(msg: Message, state: FSMContext):
+    """Receive correction pattern text, add to source_patterns, re-send verification."""
+    data = await state.get_data()
+    src_id = data.get("patv_src_id")
+    await state.clear()
+    if not src_id:
+        return
+    if not await _user_owns_source(msg.from_user.id, src_id):
+        await msg.answer("⛔ Немає прав на це джерело.")
+        return
+    pattern = (msg.text or "").strip()
+    if not pattern:
+        await msg.answer("❌ Порожній патерн — скасовано.")
+        return
+    # Save manual pattern
+    import aiosqlite as _aio
+    try:
+        async with _aio.connect(DB_PATH, timeout=10) as db:
+            await db.execute(
+                "INSERT INTO source_patterns(source_id, pattern, auto) VALUES(?,?,0)",
+                (src_id, pattern))
+            # Any new pattern invalidates prior verification
+            await db.execute(
+                "UPDATE sources SET pattern_verified=0 WHERE id=?", (src_id,))
+            await db.commit()
+    except Exception as _e:
+        await msg.answer(f"❌ Не вдалося зберегти патерн: {_e}")
+        return
+    await msg.answer(
+        f"✅ Патерн додано:\n<code>{pattern[:200]}</code>\n\n"
+        "Зараз надішлю нові приклади очищення для повторної перевірки...",
+        parse_mode=ParseMode.HTML
+    )
+    # Re-apply patterns to existing pending posts and re-send verification examples
+    try:
+        from services import _get_source_signature, reprocess_pending_with_signature
+        src = await get_source(src_id)
+        if src:
+            sig = await _get_source_signature(src_id)
+            await reprocess_pending_with_signature(src["channel_id"], src_id, sig or "")
+    except Exception as _e:
+        log.debug(f"patv_correction reprocess: {_e}")
+    try:
+        await send_pattern_verification_request(src_id)
+    except Exception as _e:
+        log.warning(f"patv_correction resend: {_e}")
+
+
+# ─── /login <user_id> — admin miniapp impersonation ──────────────────────────
+
+@router.message(Command("login"))
+async def cmd_login(msg: Message):
+    """Admin command: /login <user_id>  — open the Mini App as the given user.
+    Generates a link with ?dev_id=<uid> that the miniapp uses as X-Dev-Id
+    header for all API calls (admin-only impersonation)."""
+    if msg.from_user.id not in ADMIN_IDS:
+        return
+    args = (msg.text or "").split(maxsplit=1)
+    if len(args) < 2:
+        await msg.answer(
+            "🛂 <b>Вхід від імені користувача</b>\n\n"
+            "Формат: <code>/login &lt;user_id або @username&gt;</code>\n\n"
+            "Приклади:\n"
+            "<code>/login 123456789</code>\n"
+            "<code>/login @ivan</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    target = args[1].strip().lstrip("@")
+    target_tg_id = None
+    target_name = ""
+    # Resolve target
+    import aiosqlite as _aio
+    try:
+        if target.isdigit():
+            u = await get_user(int(target))
+            if u:
+                target_tg_id = u["telegram_id"]
+                target_name = u.get("username") or u.get("first_name") or str(target_tg_id)
+        if target_tg_id is None:
+            async with _aio.connect(DB_PATH, timeout=10) as db:
+                row = await _fetchone(db,
+                    "SELECT * FROM users WHERE LOWER(username)=LOWER(?)", (target,))
+            if row:
+                target_tg_id = row["telegram_id"]
+                target_name = row.get("username") or row.get("first_name") or str(target_tg_id)
+    except Exception as _e:
+        await msg.answer(f"❌ Помилка пошуку: {_e}")
+        return
+    if not target_tg_id:
+        await msg.answer(f"❌ Користувача <code>{target}</code> не знайдено.",
+                         parse_mode=ParseMode.HTML)
+        return
+    miniapp_url = f"https://autopost.f.jrnm.app/miniapp?dev_id={target_tg_id}"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=f"🚪 Відкрити як @{target_name}",
+            web_app={"url": miniapp_url}
+        )
+    ]])
+    await msg.answer(
+        f"🛂 <b>Вхід як користувач</b>\n\n"
+        f"👤 @{target_name} [<code>{target_tg_id}</code>]\n\n"
+        f"Натисніть кнопку нижче — Mini App відкриється від імені цього користувача. "
+        f"Усі дії в додатку будуть виконуватись від його імені.",
+        reply_markup=kb,
+        parse_mode=ParseMode.HTML
+    )

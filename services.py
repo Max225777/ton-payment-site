@@ -391,6 +391,8 @@ async def init_db():
         "CREATE INDEX IF NOT EXISTS idx_ref_referred ON referrals(referred_id, status)",
         "ALTER TABLE sources ADD COLUMN join_status TEXT DEFAULT NULL",
         "ALTER TABLE sources ADD COLUMN invite_hash TEXT DEFAULT NULL",
+        "ALTER TABLE sources ADD COLUMN pattern_verified INTEGER DEFAULT 0",
+        "ALTER TABLE source_patterns ADD COLUMN auto INTEGER DEFAULT 0",
         ]:
             try:
                 await db.execute(sql)
@@ -566,6 +568,7 @@ async def create_channel(user_id: int, chat_id: int, title: str, username: str, 
         "autopost_from": "06:00",
         "autopost_to": "22:00",
         "autopost_ppd": "6",
+        "autopost_max_age_h": "48",
         "channel_lang": "ru",
         "ai_mode": "on",
     }, ensure_ascii=False)
@@ -1617,10 +1620,12 @@ def _strip_footer_lines(text: str) -> str:
         raw_line = lines[-1]
         is_link_line = (
             not s
-            or _r.search(r't\.me/', raw_line)        # contains t.me/ link (even in HTML)
-            or _r.search(r't\.me/', s)               # plain text t.me/
-            or _r.fullmatch(r'@[A-Za-z0-9_]{3,}', s) # only @username
-            or _r.fullmatch(r'https?://\S+', s)      # only URL
+            or _r.search(r't\.me/', raw_line)                # contains t.me/ link (even in HTML)
+            or _r.search(r't\.me/', s)                       # plain text t.me/
+            or _r.search(r'max\.(?:ru|me|app)/', raw_line, _r.I)  # Max messenger (HTML)
+            or _r.search(r'max\.(?:ru|me|app)/', s, _r.I)    # Max messenger (plain)
+            or _r.fullmatch(r'@[A-Za-z0-9_]{3,}', s)         # only @username
+            or _r.fullmatch(r'https?://\S+', s)              # only URL
         )
         # Also remove short line after a link line was removed (e.g. "Більше новин 👇")
         is_short_after_link = removed_link and len(s) <= 60
@@ -1845,6 +1850,168 @@ async def _get_source_signature(source_id: int) -> str:
         return ''
 
 
+async def _get_source_patterns_list(source_id: int) -> list:
+    """Load manual (user-added) patterns for a source from source_patterns table.
+    Each entry is an independent pattern to remove from post text."""
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            rows = await _fetchall(db,
+                "SELECT pattern FROM source_patterns WHERE source_id=?", (source_id,))
+        return [r["pattern"] for r in rows if r.get("pattern") and r["pattern"].strip()]
+    except Exception:
+        return []
+
+
+async def set_pattern_verified(source_id: int, verified: bool = True):
+    """Mark a source's pattern as verified (confirmed by the user)."""
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            await db.execute(
+                "UPDATE sources SET pattern_verified=? WHERE id=?",
+                (1 if verified else 0, source_id))
+            await db.commit()
+    except Exception as _e:
+        log.warning(f"set_pattern_verified({source_id}): {_e}")
+
+
+async def get_pattern_verified(source_id: int) -> bool:
+    """Return True if user has verified the cleaning patterns for this source."""
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            row = await _fetchone(db,
+                "SELECT pattern_verified FROM sources WHERE id=?", (source_id,))
+        return bool(row and row.get("pattern_verified"))
+    except Exception:
+        return False
+
+
+async def build_pattern_verification_examples(source_id: int, max_examples: int = 3) -> list:
+    """
+    Build a list of recent cleaned-post examples for the given source,
+    applying the CURRENT signature + manual patterns to show the user
+    exactly what the cleaning produces right now.
+
+    Returns list of dicts: [{"raw": str, "cleaned": str, "msg_id": int}].
+    """
+    src = await get_source(source_id)
+    if not src:
+        return []
+    sig = await _get_source_signature(source_id)
+    patterns = await _get_source_patterns_list(source_id)
+
+    out = []
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            rows = await _fetchall(db,
+                """SELECT rp.id as raw_id, rp.tg_message_id, rp.text as raw_text
+                   FROM raw_posts rp
+                   WHERE rp.source_id=? AND rp.text IS NOT NULL AND length(trim(rp.text))>20
+                   ORDER BY rp.id DESC LIMIT ?""",
+                (source_id, max_examples * 3))
+    except Exception:
+        rows = []
+
+    for r in rows:
+        if len(out) >= max_examples:
+            break
+        raw_txt = r.get("raw_text") or ""
+        if not raw_txt.strip():
+            continue
+        try:
+            sanitized = sanitize_html_for_telegram(raw_txt)
+            cleaned = _clean_links(sanitized, sig, patterns)
+            cleaned = _cut_source_signature(cleaned, sig)
+            for _p in patterns:
+                cleaned = _cut_source_signature(cleaned, _p)
+        except Exception:
+            cleaned = raw_txt
+        import re as _r
+        plain_cleaned = _r.sub(r'<[^>]+>', '', cleaned or '').strip()
+        plain_raw = _r.sub(r'<[^>]+>', '', raw_txt).strip()
+        if not plain_cleaned:
+            continue
+        out.append({
+            "raw": plain_raw[:600],
+            "cleaned": plain_cleaned[:600],
+            "msg_id": r.get("tg_message_id"),
+            "raw_id": r.get("raw_id"),
+        })
+    return out
+
+
+async def send_pattern_verification_request(source_id: int):
+    """After a pattern is added for a source, DM the channel owner a sample of
+    cleaning results and inline buttons to confirm / reject. Called from main.py
+    after add_source or pattern_add."""
+    if not _bot_instance:
+        return
+    src = await get_source(source_id)
+    if not src:
+        return
+    ch = await get_channel(src["channel_id"])
+    if not ch:
+        return
+    # owner is the user who owns the channel
+    owner_tg_id = None
+    try:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+            urow = await _fetchone(db,
+                "SELECT telegram_id FROM users WHERE id=?", (ch["user_id"],))
+        owner_tg_id = urow["telegram_id"] if urow else None
+    except Exception:
+        pass
+    if not owner_tg_id:
+        return
+
+    examples = await build_pattern_verification_examples(source_id, max_examples=3)
+    if not examples:
+        log.info(f"pattern-verify: no examples for src={source_id}, skipping DM")
+        return
+
+    from aiogram.enums import ParseMode as _PM
+    from aiogram.types import InlineKeyboardMarkup as _IKM, InlineKeyboardButton as _IKB
+    from html import escape as _esc
+
+    src_name = src.get("username") or src.get("title") or f"#{source_id}"
+    header = (
+        f"🔍 <b>Перевірка патерна</b>\n"
+        f"📡 Джерело: <b>@{_esc(src_name)}</b>\n\n"
+        f"Нижче — {len(examples)} приклад(и) очищених постів.\n"
+        f"Якщо все вирізано правильно — натисніть ✅.\n"
+        f"Якщо ще треба щось обрізати — надішліть наступним повідомленням "
+        f"текст/фрагмент, який треба видаляти з цього джерела.\n"
+    )
+    try:
+        await _bot_instance.send_message(owner_tg_id, header, parse_mode=_PM.HTML)
+    except Exception as _e:
+        log.warning(f"pattern-verify: failed to DM header to {owner_tg_id}: {_e}")
+        return
+
+    for i, ex in enumerate(examples, start=1):
+        body = (
+            f"<b>Приклад {i}</b>\n"
+            f"<pre>{_esc(ex['cleaned'][:1000])}</pre>"
+        )
+        try:
+            await _bot_instance.send_message(owner_tg_id, body, parse_mode=_PM.HTML)
+        except Exception as _e:
+            log.debug(f"pattern-verify: example send failed: {_e}")
+
+    kb = _IKM(inline_keyboard=[[
+        _IKB(text="✅ Все чисто", callback_data=f"patv_ok:{source_id}"),
+        _IKB(text="❌ Скасувати", callback_data=f"patv_cancel:{source_id}"),
+    ]])
+    tail = (
+        "👆 Якщо очищення правильне — натисніть <b>✅ Все чисто</b>.\n"
+        "Або надішліть новий патерн текстом — він буде доданий і я перезапущу перевірку."
+    )
+    try:
+        await _bot_instance.send_message(owner_tg_id, tail,
+                                         parse_mode=_PM.HTML, reply_markup=kb)
+    except Exception as _e:
+        log.warning(f"pattern-verify: failed to send buttons: {_e}")
+
+
 
 def _cut_source_signature(text: str, signature: str) -> str:
     """Remove promo signature from text. Line-by-line matching + promo cleanup.
@@ -1956,19 +2123,20 @@ def _cut_source_signature(text: str, signature: str) -> str:
 
     return text
 
-def _clean_links(text, source_signature: str = ""):
+def _clean_links(text, source_signature: str = "", extra_patterns: list = None):
     """
     Step 0: Cut source-specific signature FIRST (while text still has full links intact).
-    Step 1: Remove ENTIRE lines that contain t.me/, @username, https://.
+    Step 1: Remove ENTIRE lines that contain t.me/, @username, https://, max.ru/, max.me/.
             Also remove the line BEFORE if it ends with colon (intro label).
     Step 2: Remove remaining inline promo <a href> tags.
     Step 3: Remove remaining bare https:// and @usernames inline.
-    Step 4: Final signature cleanup pass.
+    Step 4: Cut source-specific signature + manual patterns.
     """
     import re as _r
 
     PROMO_DOMAINS = (
         "t.me/", "telegram.me/", "telegram.dog/",
+        "max.ru/", "max.me/", "max.app/", "m.max.ru/", "m.max.me/",
         "instagram.com/", "tiktok.com/", "youtube.com/", "youtu.be/",
         "twitter.com/", "x.com/", "vk.com/", "vk.ru/",
         "facebook.com/", "fb.com/", "fb.me/",
@@ -1983,8 +2151,8 @@ def _clean_links(text, source_signature: str = ""):
     # Step 1: remove promo lines
     # Delete: lines that START with @username/link, or where removing promo leaves < 15 chars
     # Keep: lines with real content that happen to mention someone inline
-    promo_re   = _r.compile(r't\.me/|telegram\.me/|@[A-Za-z0-9_]{3,}|https?://', _r.I)
-    start_promo= _r.compile(r'^\s*(?:@[A-Za-z0-9_]{3,}|https?://|t\.me/|telegram\.me/)', _r.I)
+    promo_re   = _r.compile(r't\.me/|telegram\.me/|max\.(?:ru|me|app)/|@[A-Za-z0-9_]{3,}|https?://', _r.I)
+    start_promo= _r.compile(r'^\s*(?:@[A-Za-z0-9_]{3,}|https?://|t\.me/|telegram\.me/|max\.(?:ru|me|app)/)', _r.I)
     _strip_tag = lambda s: _r.sub(r'<[^>]+>', '', s).strip()
     _rm_promo  = lambda s: _r.sub(r'(?:<a[^>]+>.*?</a>|https?://\S+|@[A-Za-z0-9_]{3,})', '', s).strip()
     lines_in = text.splitlines()
@@ -2024,6 +2192,45 @@ def _clean_links(text, source_signature: str = ""):
     text = _r.sub(r'\n{3,}', '\n\n', text)
     text = _strip_footer_lines(text).strip()
 
+    # Step 4: cut source-specific signature + every manual pattern - simple line removal
+    # Each pattern (auto signature + manually added ones) is applied independently.
+    _all_patterns = []
+    if source_signature:
+        _all_patterns.append(source_signature)
+    if extra_patterns:
+        _all_patterns.extend([p for p in extra_patterns if p and p.strip()])
+    for _pat in _all_patterns:
+        sig_lines = [l.strip() for l in _pat.strip().splitlines() if l.strip()]
+        # Remove matching lines from end of text
+        text_lines = text.splitlines()
+        while text_lines:
+            last = text_lines[-1].strip()
+            if not last:
+                text_lines.pop()
+                continue
+            # Check if last line matches any signature line (case-insensitive, partial match)
+            is_sig = any(
+                sig_l.lower() in last.lower() or last.lower() in sig_l.lower()
+                for sig_l in sig_lines if len(sig_l) > 3
+            )
+            if is_sig:
+                text_lines.pop()
+            else:
+                break
+        text = '\n'.join(text_lines).strip()
+        # Also try the multi-strategy rfind/cut approach for each pattern
+        text = _cut_source_signature(text, _pat)
+        # And a simple case-insensitive substring cut as a final safety net
+        _pat_norm = _r.sub(r'\s+', ' ', _pat.strip())
+        if _pat_norm and len(_pat_norm) > 3:
+            _text_norm = _r.sub(r'\s+', ' ', text)
+            _idx = _text_norm.lower().find(_pat_norm.lower())
+            if _idx >= 0:
+                # Rough mapping: find the same phrase in original text (first 40 chars)
+                _probe = _pat_norm[:40].lower()
+                _raw_idx = text.lower().find(_probe)
+                if _raw_idx >= 0:
+                    text = (text[:_raw_idx] + text[_raw_idx + len(_pat_norm):]).strip()
     return text
 
 
@@ -2059,15 +2266,20 @@ def _is_ai_refusal(text: str) -> bool:
     return any(phrase in t for phrase in _AI_REFUSAL_PHRASES)
 
 
-async def process_text_ai(text: str, mode: str, settings: dict, source_signature: str = "") -> str:
+async def process_text_ai(text: str, mode: str, settings: dict,
+                          source_signature: str = "",
+                          extra_patterns: list = None) -> str:
     """
-    Step 1: Sanitize HTML + cut signature + remove promo links
+    Step 1: Sanitize HTML + cut signature + manual patterns + remove promo links
     Step 2: If < 15 chars → skip
     Step 3: Hard AD check
     Step 4: AI classify (AD → skip)
     Step 5: AI rephrase (only if ai_mode='on')
     Step 6: Translate (only if channel_lang != 'off')
     Logs each step result for debugging.
+
+    extra_patterns = list of manual patterns from source_patterns table,
+                     each removed independently from the text.
     """
     if not text:
         return text
@@ -2076,14 +2288,20 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
     sanitized = sanitize_html_for_telegram(text)
     _plain = lambda t: _re_chk.sub(r'<[^>]+>', '', t or '').strip()
 
+    extra_patterns = [p for p in (extra_patterns or []) if p and p.strip()]
+
     _raw_plain = _plain(sanitized)
     log.info(f"  [S0] raw END: {repr(_raw_plain[-150:])}")
     if source_signature:
         log.info(f"  [S0] signature: {repr(source_signature[:80])}")
+    if extra_patterns:
+        log.info(f"  [S0] manual patterns: {len(extra_patterns)}")
 
-    # Step 1: clean links + cut signature
-    cleaned = _clean_links(sanitized, source_signature)
+    # Step 1: clean links + cut signature + manual patterns
+    cleaned = _clean_links(sanitized, source_signature, extra_patterns)
     cleaned = _cut_source_signature(cleaned, source_signature)
+    for _pat in extra_patterns:
+        cleaned = _cut_source_signature(cleaned, _pat)
     _cl_plain = _plain(cleaned)
     log.info(f"  [S1] after clean+sig END: {repr(_cl_plain[-150:])}")
     log.info(f"  [S1] sig removed: {source_signature[:30] not in _cl_plain if source_signature else True}")
@@ -2129,21 +2347,19 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
 
             # Step 5: AI rephrase
             if ai_mode == "on":
-                # Build rephrase prompt with explicit signature removal instruction
+                # Build rephrase prompt with explicit signature + manual-patterns removal instructions
                 _rephrase_prompt = REPHRASE_PROMPT
+                _all_remove = []
                 if source_signature:
-                    import re as _re_sig
-                    # Build clean version of sig for AI (strip URLs/HTML to show just the words)
-                    _sig_clean = _re_sig.sub(r'<a[^>]+>.*?</a>', '', source_signature)
-                    _sig_clean = _re_sig.sub(r'<[^>]+>', '', _sig_clean)
-                    _sig_clean = _re_sig.sub(r'https?://\S+', '', _sig_clean)
-                    _sig_clean = _re_sig.sub(r'@[A-Za-z0-9_]{3,}', '', _sig_clean)
-                    _sig_clean = _re_sig.sub(r'\s+', ' ', _sig_clean).strip()
+                    _all_remove.append(source_signature.strip())
+                for _pat in extra_patterns:
+                    _all_remove.append(_pat.strip())
+                if _all_remove:
                     _rephrase_prompt = (
                         REPHRASE_PROMPT + "\n"
-                        f"7. CRITICAL: DELETE the following promo/signature lines from the text COMPLETELY. "
-                        f"Do NOT rephrase them, do NOT include them — just DELETE them from output:\n"
-                        f"\"{_sig_clean}\""
+                        f"7. MANDATORY: The following fragments are promo signatures/patterns — "
+                        f"REMOVE EACH OF THEM COMPLETELY from the output, do not include any of them in any form:\n"
+                        + "\n---\n".join(_all_remove)
                     )
                 rephrased = await _call_ai(_rephrase_prompt, cleaned)
                 log.info(f"  [S5] rephrase END: {repr(_plain(rephrased)[-120:])}")
@@ -2159,19 +2375,26 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
             else:
                 log.info("  [S5] rephrase disabled (ai_mode=off)")
 
-            # Cut signature again after AI (catches anything added back)
-            cleaned = _clean_links(cleaned, source_signature)
+            # Cut signature + patterns again after AI (catches anything added back)
+            cleaned = _clean_links(cleaned, source_signature, extra_patterns)
             cleaned = _cut_source_signature(cleaned, source_signature)
+            for _pat in extra_patterns:
+                cleaned = _cut_source_signature(cleaned, _pat)
             log.info(f"  [S5b] after post-rephrase sig cut END: {repr(_plain(cleaned)[-120:])}")
 
             # Step 6: Translate
             if channel_lang and channel_lang != "off":
                 lang_name = TRANSLATE_SUFFIX.get(channel_lang, channel_lang)
                 log.info(f"  [S6] translating to {lang_name}...")
+                _remove_frags = []
+                if source_signature:
+                    _remove_frags.append(source_signature.strip())
+                for _pat in extra_patterns:
+                    _remove_frags.append(_pat.strip())
                 _sig_note = (
-                    f"\nMANDATORY: Remove this promo signature completely from output: {source_signature.strip()}"
-                    if source_signature else ""
-                )
+                    "\nMANDATORY: Remove these promo fragments completely from output:\n"
+                    + "\n---\n".join(_remove_frags)
+                ) if _remove_frags else ""
                 translate_prompt = (
                     f"Translate the following Telegram post to {lang_name}.\n"
                     "Keep ALL HTML tags exactly as-is.\n"
@@ -2190,6 +2413,8 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
                     result = _re_chk.sub(r'<a\s+href=[^>]+>.*?</a>', '', result, flags=_re_chk.DOTALL)
                     result = _re_chk.sub(r'@[A-Za-z0-9_]{3,}', '', result)
                     result = _cut_source_signature(result, source_signature)
+                    for _pat in extra_patterns:
+                        result = _cut_source_signature(result, _pat)
                     log.info(f"  [S6] translated OK: {repr(_plain(result)[:120])}")
                     return result
                 log.warning("  [S6] translate returned empty, using untranslated")
@@ -2201,8 +2426,11 @@ async def process_text_ai(text: str, mode: str, settings: dict, source_signature
 
         except Exception as e:
             log.warning(f"  AI error ({AI_PROVIDER}): {e} — fallback to clean only")
-            fb = _clean_links(sanitized, source_signature)
-            return _cut_source_signature(fb, source_signature)
+            fb = _clean_links(sanitized, source_signature, extra_patterns)
+            fb = _cut_source_signature(fb, source_signature)
+            for _pat in extra_patterns:
+                fb = _cut_source_signature(fb, _pat)
+            return fb
 
 
 async def _get_post_status(raw_post_id: int) -> str:
@@ -2217,13 +2445,14 @@ async def _get_post_status(raw_post_id: int) -> str:
         return "unknown"
 
 async def reprocess_all_pending_for_channel(channel_id: int):
-    """Reprocess ALL pending posts for channel with current signatures - for cleaning existing queue."""
+    """Reprocess ALL pending posts for channel with current signatures + patterns."""
     try:
         sources = await get_channel_sources(channel_id)
         settings = await get_channel_settings(channel_id)
         for src in sources:
             sig = await _get_source_signature(src["id"])
-            if not sig:
+            extra = await _get_source_patterns_list(src["id"])
+            if not sig and not extra:
                 continue
             async with aiosqlite.connect(DB_PATH, timeout=30) as db:
                 rows = await _fetchall(db,
@@ -2237,7 +2466,8 @@ async def reprocess_all_pending_for_channel(channel_id: int):
             for row in rows:
                 try:
                     await _ai_process_post(row["raw_post_id"], row.get("raw_text") or "",
-                                           settings, source_signature=sig)
+                                           settings, source_signature=sig,
+                                           extra_patterns=extra)
                 except Exception as _e:
                     log.debug(f"reprocess_all post {row.get('raw_post_id')}: {_e}")
         log.info(f"reprocess_all_pending_for_channel {channel_id}: done")
@@ -2245,8 +2475,9 @@ async def reprocess_all_pending_for_channel(channel_id: int):
         log.error(f"reprocess_all_pending error: {e}")
 
 async def reprocess_pending_with_signature(channel_id: int, source_id: int, signature: str):
-    """Cut signature from ALL pending posts for this source. Fast - no AI calls."""
-    if not signature:
+    """Cut signature + manual patterns from ALL pending posts for this source. Fast - no AI calls."""
+    extra = await _get_source_patterns_list(source_id)
+    if not signature and not extra:
         return
     try:
         async with aiosqlite.connect(DB_PATH, timeout=30) as db:
@@ -2261,14 +2492,16 @@ async def reprocess_pending_with_signature(channel_id: int, source_id: int, sign
         if not rows:
             log.info(f"reprocess: no pending posts for source {source_id}")
             return
-        log.info(f"reprocess: cutting sig from {len(rows)} posts, sig={repr(signature[:50])}")
+        log.info(f"reprocess: cutting sig+{len(extra)} patterns from {len(rows)} posts, sig={repr((signature or '')[:50])}")
         updated = 0
         async with aiosqlite.connect(DB_PATH, timeout=30) as db:
             for row in rows:
                 old_text = row.get("cleaned_text") or ""
-                # Apply all cleaning: links + signature cut
-                new_text = _clean_links(old_text, signature)
-                new_text = _cut_source_signature(new_text, signature)
+                # Apply all cleaning: links + signature cut + each manual pattern
+                new_text = _clean_links(old_text, signature or "", extra)
+                new_text = _cut_source_signature(new_text, signature or "")
+                for _pat in extra:
+                    new_text = _cut_source_signature(new_text, _pat)
                 if new_text != old_text:
                     await db.execute(
                         "UPDATE processed_posts SET cleaned_text=? WHERE id=?",
@@ -2281,12 +2514,17 @@ async def reprocess_pending_with_signature(channel_id: int, source_id: int, sign
         log.error(f"reprocess_pending error: {e}")
 
 
-async def _ai_process_post(raw_id: int, text: str, settings: dict, source_signature: str = ""):
+async def _ai_process_post(raw_id: int, text: str, settings: dict,
+                           source_signature: str = "",
+                           extra_patterns: list = None):
     """Classify + clean. AD → mark skipped. OK → save cleaned text.
     text = raw original HTML (for classify context)
     source_signature = already-known promo suffix to cut
+    extra_patterns   = list of manual user-added patterns to also remove
     """
-    result = await process_text_ai(text, "on", settings, source_signature=source_signature)
+    result = await process_text_ai(text, "on", settings,
+                                   source_signature=source_signature,
+                                   extra_patterns=extra_patterns)
     async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         if not result:
             # Text was classified as ad or fully removed — skip the post
@@ -2550,6 +2788,39 @@ async def _get_telethon_client():
     log.error("All Telethon sessions unavailable")
     return None, None
 
+
+def _max_age_cutoff(settings: dict):
+    """Return a naive-UTC datetime; messages dated before it should be skipped.
+
+    Reads settings["autopost_max_age_h"] as hours (default 48). A value of
+    0/empty/invalid disables the filter (returns None).
+    """
+    try:
+        raw = settings.get("autopost_max_age_h", "48")
+        hours = int(float(str(raw).strip() or "48"))
+    except Exception:
+        hours = 48
+    if hours <= 0:
+        return None
+    from datetime import datetime as _dt, timedelta as _td
+    return _dt.utcnow() - _td(hours=hours)
+
+
+def _msg_is_older_than(msg, cutoff) -> bool:
+    """True if msg.date (tz-aware or naive) is before cutoff (naive UTC)."""
+    if cutoff is None:
+        return False
+    d = getattr(msg, "date", None)
+    if d is None:
+        return False
+    try:
+        if getattr(d, "tzinfo", None) is not None:
+            d = d.replace(tzinfo=None)
+        return d < cutoff
+    except Exception:
+        return False
+
+
 async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX) -> int:
     """
     Parse one source channel:
@@ -2620,6 +2891,9 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             return 0
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
+        age_cutoff = _max_age_cutoff(settings)
+        if age_cutoff:
+            log.info(f"  @{source['username']}: max-age cutoff = {age_cutoff.isoformat()} UTC")
 
         # Перевіряємо чи є вже пости в черзі для цього джерела
         pending_count = await count_pending_posts(channel_id)
@@ -2633,6 +2907,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
         all_messages  = []
         fetched_total = 0
         offset_id     = 0  # 0 = з найновішого
+        hit_age_wall  = False
 
         while fetched_total < MAX_FETCH:
             try:
@@ -2653,6 +2928,13 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             offset_id = batch[-1].id  # наступний батч іде ще глибше (старіші)
 
             new_in_batch = [m for m in batch if m.id not in parsed_ids]
+            # Drop anything older than the configured max-age cutoff.
+            if age_cutoff is not None:
+                kept = [m for m in new_in_batch if not _msg_is_older_than(m, age_cutoff)]
+                if len(kept) < len(new_in_batch):
+                    # Batch contains posts older than cutoff → we've walked past the allowed window.
+                    hit_age_wall = True
+                new_in_batch = kept
             all_messages.extend(new_in_batch)
 
             truly_new = len(all_messages)
@@ -2660,6 +2942,9 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
 
             if truly_new >= TARGET_NEW * 3:
                 break  # вистачає кандидатів з запасом на AI-відсів (3x)
+            if hit_age_wall:
+                log.info(f"  reached max-age wall, stop fetching older batches")
+                break
             if len(batch) < FETCH_BATCH:
                 if truly_new == 0:
                     log.info("  no new posts — end of history")
@@ -2732,9 +3017,13 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             elif not existing_sig:
                 existing_sig = await _get_source_signature(source["id"])
         source_signature = existing_sig
+        # Manual user-added patterns (independent from auto signature)
+        source_extra_patterns = await _get_source_patterns_list(source["id"])
 
         if not source_signature:
             log.info(f"  @{source['username']}: no promo signature detected — proceeding without signature filter")
+        if source_extra_patterns:
+            log.info(f"  @{source['username']}: {len(source_extra_patterns)} manual pattern(s) will be applied")
 
         log.info(f"Parsing @{source['username']}: {len(messages)} msgs → collecting candidates")
 
@@ -2878,11 +3167,13 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 if not (text or "").strip():
                     await save_processed_post(raw_id, "", mode="sanitize")
                 else:
-                    cleaned = _clean_links(sanitize_html_for_telegram(text), source_signature)
+                    cleaned = _clean_links(sanitize_html_for_telegram(text), source_signature, source_extra_patterns)
                     await save_processed_post(raw_id, cleaned, mode="sanitize")
                     # AI: classify (ad filter) + rephrase + translate
                     try:
-                        await _ai_process_post(raw_id, text, settings, source_signature=source_signature)
+                        await _ai_process_post(raw_id, text, settings,
+                                               source_signature=source_signature,
+                                               extra_patterns=source_extra_patterns)
                     except Exception as _ae:
                         import logging as _l; _l.getLogger(__name__).warning(f"AI err: {_ae}")
                 added += 1
@@ -2944,6 +3235,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
 
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
+        age_cutoff = _max_age_cutoff(settings)
 
         # Persistent dedup via seen_messages (survives midnight cleanup)
         parsed_ids, parsed_grouped_ids = await load_seen_message_ids(channel_id, source["id"])
@@ -2953,6 +3245,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
         all_messages = []
         fetched_total = 0
         offset_id = 0
+        hit_age_wall = False
 
         while fetched_total < 5000:
             try:
@@ -2965,8 +3258,15 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
             fetched_total += len(batch)
             offset_id = batch[-1].id
             new_in_batch = [m for m in batch if m.id not in parsed_ids]
+            if age_cutoff is not None:
+                kept = [m for m in new_in_batch if not _msg_is_older_than(m, age_cutoff)]
+                if len(kept) < len(new_in_batch):
+                    hit_age_wall = True
+                new_in_batch = kept
             all_messages.extend(new_in_batch)
             if len(all_messages) >= TARGET_NEW * 3:
+                break
+            if hit_age_wall:
                 break
             if len(batch) < FETCH_BATCH:
                 break
@@ -3154,9 +3454,13 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
         processed_groups: set = set()
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
+        age_cutoff = _max_age_cutoff(settings)
         candidates = []
         for msg in reversed(batch):
             if msg.id in published_ids:
+                continue
+            if _msg_is_older_than(msg, age_cutoff):
+                # Honour user's max-age setting even in deep-history mode.
                 continue
             has_text = bool((getattr(msg, "text", None) or "").strip())
             if not msg.media and not has_text:
@@ -3324,6 +3628,7 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
                 log.debug(f"  skip {msg_id}: media_only=True, no real media")
                 continue
             _sig = await _get_source_signature(src["id"])
+            _extra = await _get_source_patterns_list(src["id"])
             _thumb_id = ""
             raw_id = await save_raw_post(
                 channel_id=channel_id, source_id=src["id"],
@@ -3333,13 +3638,17 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
             if not raw_id:
                 log.debug(f"  skip dup {msg_id} src=@{src['username']}")
                 continue
-            # Clean signature BEFORE saving (fast path)
+            # Clean signature + manual patterns BEFORE saving (fast path)
             _html = sanitize_html_for_telegram(text)
-            cleaned = _clean_links(_html, _sig)
+            cleaned = _clean_links(_html, _sig, _extra)
             cleaned = _cut_source_signature(cleaned, _sig)
+            for _pat in _extra:
+                cleaned = _cut_source_signature(cleaned, _pat)
             await save_processed_post(raw_id, cleaned, mode="sanitize")
             try:
-                await _ai_process_post(raw_id, text, settings, source_signature=_sig)
+                await _ai_process_post(raw_id, text, settings,
+                                       source_signature=_sig,
+                                       extra_patterns=_extra)
             except Exception as _ae:
                 log.warning(f"AI err: {_ae}")
             # Only count post if it ended up as pending (not skipped as AD)
@@ -3383,6 +3692,7 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
                     log.debug(f"  deep skip {msg_id}: media_only=True")
                     continue
                 _sig = await _get_source_signature(src["id"])
+                _extra = await _get_source_patterns_list(src["id"])
                 raw_id = await save_raw_post(
                     channel_id=channel_id, source_id=src["id"],
                     tg_message_id=msg_id, text=text, media_type=media_type,
@@ -3392,10 +3702,12 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
                 if not raw_id:
                     log.debug(f"  deep skip dup {msg_id}")
                     continue
-                cleaned = _clean_links(sanitize_html_for_telegram(text), _sig)
+                cleaned = _clean_links(sanitize_html_for_telegram(text), _sig, _extra)
                 await save_processed_post(raw_id, cleaned, mode="sanitize")
                 try:
-                    await _ai_process_post(raw_id, text, settings, source_signature=_sig)
+                    await _ai_process_post(raw_id, text, settings,
+                                           source_signature=_sig,
+                                           extra_patterns=_extra)
                 except Exception as _ae:
                     log.warning(f"AI err deep: {_ae}")
                 total += 1
@@ -3464,7 +3776,8 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
         # but we pass the messages directly to avoid re-fetching
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
-    
+        age_cutoff = _max_age_cutoff(settings)
+
         from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
         from telethon.extensions import html as tl_html
 
@@ -3488,6 +3801,8 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
                 continue
             if msg.id in published_ids_deep:
                 continue  # already published
+            if _msg_is_older_than(msg, age_cutoff):
+                continue  # Respect user's max-age setting even in deep mode.
             if msg.grouped_id and msg.grouped_id in processed_groups:
                 continue
 
