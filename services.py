@@ -1649,9 +1649,7 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         return ''
     try:
         entity = await client.get_entity('@' + username.lstrip('@'))
-        # fetch only text — no media download
         messages = await client.get_messages(entity, limit=25)
-        # strip media references so Telethon won't auto-download anything
         for _m in messages:
             try: _m.media = None
             except: pass
@@ -1670,26 +1668,52 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
     if len(texts) < 4:
         return ''
     _posts = '\n\n'.join(texts[:25])
-    # Statistical pre-check: find lines appearing in 50%+ of posts
+    # Statistical pre-check: find lines appearing in 50%+ of posts (check last 5 lines)
     import re as _re2
     _line_counts: dict = {}
     for _t in texts:
         _lines = [l.strip() for l in _t.splitlines() if len(l.strip()) > 5]
-        for _line in _lines[-3:]:  # only last 3 lines of each post
+        for _line in _lines[-5:]:  # last 5 lines — patterns can be multi-line
             _line_counts[_line] = _line_counts.get(_line, 0) + 1
     _threshold = max(3, int(len(texts) * 0.5))
     _stat_hint = [l for l, c in sorted(_line_counts.items(), key=lambda x:-x[1]) if c >= _threshold]
-    _hint_str = ', '.join(repr(x[:60]) for x in _stat_hint[:5]) if _stat_hint else 'не знайдено статистично'
+
+    # Also find multi-line combos (2-5 line blocks at the end)
+    _multi_line_hints = []
+    for _n in range(2, 6):  # 2,3,4,5 lines
+        _combo_counts: dict = {}
+        for _t in texts:
+            _lines = [l.strip() for l in _t.splitlines() if l.strip()]
+            if len(_lines) >= _n:
+                _combo = '\n'.join(_lines[-_n:])
+                _combo_counts[_combo] = _combo_counts.get(_combo, 0) + 1
+        for _combo, _cnt in _combo_counts.items():
+            if _cnt >= max(2, int(len(texts) * 0.4)):
+                _multi_line_hints.append((_combo, _cnt))
+    # Sort by line count descending (prefer longer patterns)
+    _multi_line_hints.sort(key=lambda x: (-x[0].count('\n'), -x[1]))
+
+    _hint_str = ', '.join(repr(x[:80]) for x in _stat_hint[:5]) if _stat_hint else 'не знайдено статистично'
+    _multi_hint_str = ''
+    if _multi_line_hints:
+        _multi_hint_str = '\nМультирядкові блоки (останні рядки що повторюються як блок): ' + \
+            ', '.join(f'{repr(c[:100])} ({n} разів)' for c, n in _multi_line_hints[:3])
+
     _sys = ('Ти аналізатор Telegram-каналів для бота автопостингу. '
             'Знайди рекламний підпис/footer що ПОВТОРЮЄТЬСЯ як мінімум у половині (50%+) постів. '
-            'ВАЖЛИВО: підпис має бути ОДНАКОВИМ або МАЙЖЕ ОДНАКОВИМ текстом у кінці різних постів. '
+            'ДУЖЕ ВАЖЛИВО: підпис може бути від 1 до 5 рядків! Часто це КІЛЬКА рядків разом: '
+            'наприклад рядок з емоджі/тегом каналу + рядок з посиланням + заклик підписатись. '
+            'Поверни ВЕСЬ блок повторюваних рядків (всі рядки підпису), а не лише один рядок. '
             'НЕ обирай текст що зустрічається лише в 1-2 постах. '
-            'Може бути: @username посилання, t.me/ посилання, '
-            'Instagram/TikTok/YouTube/Discord посилання, заклик підписатись/перейти/слідкувати. '
-            'Відповідай ТІЛЬКИ точним текстом підпису (як є у постах). Якщо не знайдено — NONE.')
+            'Може бути: @username, t.me/, max.me/, max.ru/, Instagram/TikTok/YouTube/Discord, '
+            'заклик підписатись/перейти/слідкувати, "18+", "БУНКЕР", "ПОДПИСАТЬСЯ" тощо. '
+            'Відповідай ТІЛЬКИ точним текстом підпису (як є у постах, рядок за рядком). '
+            'Якщо не знайдено — NONE.')
     _usr = (f'Ось {len(texts)} постів каналу @{username}.\n'
-            f'Статистичний аналіз (рядки що зустрічаються у 50%+ постів): {_hint_str}\n\n'
-            f'Перевір і знайди точний рекламний підпис що зустрічається у більшості постів:\n\n{_posts}')
+            f'Статистичний аналіз (рядки що зустрічаються у 50%+ постів): {_hint_str}'
+            f'{_multi_hint_str}\n\n'
+            f'Знайди точний рекламний підпис (може бути 1-5 рядків) '
+            f'що зустрічається у більшості постів:\n\n{_posts}')
     try:
         _res = (await _call_ai(_sys, _usr)).strip()
         _clean = _res.strip('"').strip("'")
@@ -1700,7 +1724,6 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         _sig_check_lines = [l.strip() for l in _clean.splitlines() if len(l.strip()) >= 4]
         _check_line = _sig_check_lines[0][:60] if _sig_check_lines else _clean.strip()[:60]
         _appear_count = sum(1 for _t in texts if _check_line.lower() in _t.lower())
-        # If first line doesn't match enough, try other lines
         if _appear_count < max(2, int(len(texts) * 0.4)) and len(_sig_check_lines) > 1:
             for _sl in _sig_check_lines[1:]:
                 _cnt = sum(1 for _t in texts if _sl[:60].lower() in _t.lower())
@@ -1709,13 +1732,11 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         if _appear_count < max(2, int(len(texts) * 0.4)):
             log.info(f'detect_signature @{username}: AI result appears only {_appear_count}/{len(texts)} times — rejected')
             return ''
-        log.info(f'detect_signature @{username}: found: {repr(_clean[:80])}')
+        log.info(f'detect_signature @{username}: found ({_clean.count(chr(10))+1} lines): {repr(_clean[:120])}')
         async with aiosqlite.connect(DB_PATH, timeout=10) as _db:
             await _db.execute('UPDATE sources SET promo_signature=? WHERE id=?', (_clean, source_id))
-            # Get channel_id for this source
             _src_row = await _fetchone(_db, 'SELECT channel_id FROM sources WHERE id=?', (source_id,))
             await _db.commit()
-        # Re-clean any already-queued posts from this source
         if _src_row:
             await reprocess_pending_with_signature(_src_row['channel_id'], source_id, _clean)
         return _clean
@@ -1737,7 +1758,7 @@ async def _detect_source_signature(source_id: int, messages: list) -> str:
     def strip_html(t):
         return _r.sub(r'<[^>]+>', '', t or '').strip()
 
-    def get_last_lines(text: str, n: int = 4) -> list:
+    def get_last_lines(text: str, n: int = 5) -> list:
         lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
         return lines[-n:] if len(lines) >= n else lines
 
@@ -1763,10 +1784,10 @@ async def _detect_source_signature(source_id: int, messages: list) -> str:
 
     threshold = max(3, int(len(samples) * 0.5))
 
-    # Statistical: find repeating last lines
+    # Statistical: find repeating last lines (check last 5)
     candidate_counts: dict = {}
     for s in samples:
-        last = get_last_lines(s, 3)
+        last = get_last_lines(s, 5)
         for line in last:
             if len(line) >= 6:
                 candidate_counts[line] = candidate_counts.get(line, 0) + 1
@@ -1782,23 +1803,25 @@ async def _detect_source_signature(source_id: int, messages: list) -> str:
                 best = candidate
                 best_count = score
 
-    # Try 2-line combos (strip URLs before comparing for better matching)
+    # Try multi-line combos 2-5 lines (strip URLs before comparing for better matching)
     def _strip_urls(s):
         s = _r.sub(r'https?://\S+', '', s)
         s = _r.sub(r'\([^)]*\)', '', s)  # (link) → empty
         return _r.sub(r'\s+', ' ', s).strip()
 
-    for s in samples:
-        last2 = get_last_lines(s, 2)
-        if len(last2) == 2:
-            combo = '\n'.join(last2)
-            combo_clean = _strip_urls(combo)
-            if len(combo_clean) >= 8:
-                cnt = sum(1 for ss in samples if _strip_urls('\n'.join(get_last_lines(ss, 2))) == combo_clean)
-                is_promo = bool(PROMO_RE.search(combo))
-                if cnt >= threshold - 1 and (is_promo or cnt >= threshold):
-                    if len(combo) > len(best) or (is_promo and cnt >= threshold - 1):
-                        best = combo
+    for _n_combo in range(2, 6):  # 2,3,4,5 line combos
+        for s in samples:
+            last_n = get_last_lines(s, _n_combo)
+            if len(last_n) == _n_combo:
+                combo = '\n'.join(last_n)
+                combo_clean = _strip_urls(combo)
+                if len(combo_clean) >= 8:
+                    cnt = sum(1 for ss in samples if _strip_urls('\n'.join(get_last_lines(ss, _n_combo))) == combo_clean)
+                    is_promo = bool(PROMO_RE.search(combo))
+                    if cnt >= threshold - 1 and (is_promo or cnt >= threshold):
+                        # Prefer longer (more lines) patterns
+                        if combo.count('\n') > best.count('\n') or (len(combo) > len(best) and combo.count('\n') >= best.count('\n')):
+                            best = combo
 
     if len(best) < 6:
         # AI fallback: ask AI to find promo footer
@@ -1862,154 +1885,6 @@ async def _get_source_patterns_list(source_id: int) -> list:
         return []
 
 
-async def set_pattern_verified(source_id: int, verified: bool = True):
-    """Mark a source's pattern as verified (confirmed by the user)."""
-    try:
-        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-            await db.execute(
-                "UPDATE sources SET pattern_verified=? WHERE id=?",
-                (1 if verified else 0, source_id))
-            await db.commit()
-    except Exception as _e:
-        log.warning(f"set_pattern_verified({source_id}): {_e}")
-
-
-async def get_pattern_verified(source_id: int) -> bool:
-    """Return True if user has verified the cleaning patterns for this source."""
-    try:
-        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-            row = await _fetchone(db,
-                "SELECT pattern_verified FROM sources WHERE id=?", (source_id,))
-        return bool(row and row.get("pattern_verified"))
-    except Exception:
-        return False
-
-
-async def build_pattern_verification_examples(source_id: int, max_examples: int = 3) -> list:
-    """
-    Build a list of recent cleaned-post examples for the given source,
-    applying the CURRENT signature + manual patterns to show the user
-    exactly what the cleaning produces right now.
-
-    Returns list of dicts: [{"raw": str, "cleaned": str, "msg_id": int}].
-    """
-    src = await get_source(source_id)
-    if not src:
-        return []
-    sig = await _get_source_signature(source_id)
-    patterns = await _get_source_patterns_list(source_id)
-
-    out = []
-    try:
-        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-            rows = await _fetchall(db,
-                """SELECT rp.id as raw_id, rp.tg_message_id, rp.text as raw_text
-                   FROM raw_posts rp
-                   WHERE rp.source_id=? AND rp.text IS NOT NULL AND length(trim(rp.text))>20
-                   ORDER BY rp.id DESC LIMIT ?""",
-                (source_id, max_examples * 3))
-    except Exception:
-        rows = []
-
-    for r in rows:
-        if len(out) >= max_examples:
-            break
-        raw_txt = r.get("raw_text") or ""
-        if not raw_txt.strip():
-            continue
-        try:
-            sanitized = sanitize_html_for_telegram(raw_txt)
-            cleaned = _clean_links(sanitized, sig, patterns)
-            cleaned = _cut_source_signature(cleaned, sig)
-            for _p in patterns:
-                cleaned = _cut_source_signature(cleaned, _p)
-        except Exception:
-            cleaned = raw_txt
-        import re as _r
-        plain_cleaned = _r.sub(r'<[^>]+>', '', cleaned or '').strip()
-        plain_raw = _r.sub(r'<[^>]+>', '', raw_txt).strip()
-        if not plain_cleaned:
-            continue
-        out.append({
-            "raw": plain_raw[:600],
-            "cleaned": plain_cleaned[:600],
-            "msg_id": r.get("tg_message_id"),
-            "raw_id": r.get("raw_id"),
-        })
-    return out
-
-
-async def send_pattern_verification_request(source_id: int):
-    """After a pattern is added for a source, DM the channel owner a sample of
-    cleaning results and inline buttons to confirm / reject. Called from main.py
-    after add_source or pattern_add."""
-    if not _bot_instance:
-        return
-    src = await get_source(source_id)
-    if not src:
-        return
-    ch = await get_channel(src["channel_id"])
-    if not ch:
-        return
-    # owner is the user who owns the channel
-    owner_tg_id = None
-    try:
-        async with aiosqlite.connect(DB_PATH, timeout=10) as db:
-            urow = await _fetchone(db,
-                "SELECT telegram_id FROM users WHERE id=?", (ch["user_id"],))
-        owner_tg_id = urow["telegram_id"] if urow else None
-    except Exception:
-        pass
-    if not owner_tg_id:
-        return
-
-    examples = await build_pattern_verification_examples(source_id, max_examples=3)
-    if not examples:
-        log.info(f"pattern-verify: no examples for src={source_id}, skipping DM")
-        return
-
-    from aiogram.enums import ParseMode as _PM
-    from aiogram.types import InlineKeyboardMarkup as _IKM, InlineKeyboardButton as _IKB
-    from html import escape as _esc
-
-    src_name = src.get("username") or src.get("title") or f"#{source_id}"
-    header = (
-        f"🔍 <b>Перевірка патерна</b>\n"
-        f"📡 Джерело: <b>@{_esc(src_name)}</b>\n\n"
-        f"Нижче — {len(examples)} приклад(и) очищених постів.\n"
-        f"Якщо все вирізано правильно — натисніть ✅.\n"
-        f"Якщо ще треба щось обрізати — надішліть наступним повідомленням "
-        f"текст/фрагмент, який треба видаляти з цього джерела.\n"
-    )
-    try:
-        await _bot_instance.send_message(owner_tg_id, header, parse_mode=_PM.HTML)
-    except Exception as _e:
-        log.warning(f"pattern-verify: failed to DM header to {owner_tg_id}: {_e}")
-        return
-
-    for i, ex in enumerate(examples, start=1):
-        body = (
-            f"<b>Приклад {i}</b>\n"
-            f"<pre>{_esc(ex['cleaned'][:1000])}</pre>"
-        )
-        try:
-            await _bot_instance.send_message(owner_tg_id, body, parse_mode=_PM.HTML)
-        except Exception as _e:
-            log.debug(f"pattern-verify: example send failed: {_e}")
-
-    kb = _IKM(inline_keyboard=[[
-        _IKB(text="✅ Все чисто", callback_data=f"patv_ok:{source_id}"),
-        _IKB(text="❌ Скасувати", callback_data=f"patv_cancel:{source_id}"),
-    ]])
-    tail = (
-        "👆 Якщо очищення правильне — натисніть <b>✅ Все чисто</b>.\n"
-        "Або надішліть новий патерн текстом — він буде доданий і я перезапущу перевірку."
-    )
-    try:
-        await _bot_instance.send_message(owner_tg_id, tail,
-                                         parse_mode=_PM.HTML, reply_markup=kb)
-    except Exception as _e:
-        log.warning(f"pattern-verify: failed to send buttons: {_e}")
 
 
 
@@ -2035,9 +1910,11 @@ def _cut_source_signature(text: str, signature: str) -> str:
         return s.strip()
 
     # Check if a line looks like promo (not real content)
-    _PROMO_WORDS = {'подписаться', 'подписывайся', 'подписывайтесь', 'подписка',
+    _PROMO_WORDS = {'подписаться', 'подписывайс��', 'подписывайтесь', 'подписка',
                     'subscribe', 'follow', 'join', 'жесть', 'бункер', '18+',
-                    'подписатись', 'підписатись', 'підписуйся', 'канал', 'channel'}
+                    'подписатись', 'підписатись', 'підписуйся', 'канал', 'channel',
+                    'подписывайся', 'max', 'telegram', 'присылать', 'прислать',
+                    'новость', 'новости', 'читать', 'читай', 'переходи', 'переходь'}
     def _is_promo_line(line_text):
         """Check if line is promotional (short, emoji-heavy, promo words)."""
         plain = _plain(line_text).lower()
@@ -2155,22 +2032,37 @@ def _clean_links(text, source_signature: str = "", extra_patterns: list = None):
     start_promo= _r.compile(r'^\s*(?:@[A-Za-z0-9_]{3,}|https?://|t\.me/|telegram\.me/|max\.(?:ru|me|app)/)', _r.I)
     _strip_tag = lambda s: _r.sub(r'<[^>]+>', '', s).strip()
     _rm_promo  = lambda s: _r.sub(r'(?:<a[^>]+>.*?</a>|https?://\S+|@[A-Za-z0-9_]{3,})', '', s).strip()
+
+    # Promo-word patterns for detecting pure promo lines without URLs
+    _PROMO_LINE_RE = _r.compile(
+        r'подписаться|подписывайся|подписывайтесь|subscribe|follow|join|'
+        r'бункер|жесть|18\+|подписатись|підписатись|підписуйся|'
+        r'мы в max|наш канал|переходи|читай|прислать новость',
+        _r.IGNORECASE
+    )
+
     lines_in = text.splitlines()
     keep = [True] * len(lines_in)
     for i, line in enumerate(lines_in):
-        if not promo_re.search(line):
-            continue
         plain = _strip_tag(line).strip()
         if not plain:
-            keep[i] = False
             continue
-        # Line starts with promo token → always delete (it's a promo line)
-        if start_promo.match(plain):
-            keep[i] = False
-            continue
-        # Line has promo inline but real content before it → keep
-        without_promo = _rm_promo(plain)
-        if len(without_promo) < 15:
+
+        # Lines with promo URLs/links
+        if promo_re.search(line):
+            if not plain:
+                keep[i] = False
+                continue
+            if start_promo.match(plain):
+                keep[i] = False
+                continue
+            without_promo = _rm_promo(plain)
+            if len(without_promo) < 15:
+                keep[i] = False
+                continue
+
+        # Short lines (< 80 chars) with promo keywords — remove even without URLs
+        if len(plain) < 80 and _PROMO_LINE_RE.search(plain):
             keep[i] = False
     text = "\n".join(l for k, l in enumerate(lines_in) if keep[k])
 
@@ -2357,9 +2249,12 @@ async def process_text_ai(text: str, mode: str, settings: dict,
                 if _all_remove:
                     _rephrase_prompt = (
                         REPHRASE_PROMPT + "\n"
-                        f"7. MANDATORY: The following fragments are promo signatures/patterns — "
-                        f"REMOVE EACH OF THEM COMPLETELY from the output, do not include any of them in any form:\n"
-                        + "\n---\n".join(_all_remove)
+                        f"7. CRITICAL — REMOVE ALL promotional signatures/footers from the output. "
+                        f"These are the known patterns (each between --- markers) — delete them and "
+                        f"ANY similar promo text (subscribe calls, channel links, 18+ labels, etc.):\n"
+                        + "\n---\n".join(_all_remove) + "\n---\n"
+                        f"8. Also remove ANY lines that look like channel promotions even if not listed above: "
+                        f"'ПОДПИСАТЬСЯ', 'БУНКЕР', 'ЖЕСТЬ', channel mentions, 'Мы в MAX', etc."
                     )
                 rephrased = await _call_ai(_rephrase_prompt, cleaned)
                 log.info(f"  [S5] rephrase END: {repr(_plain(rephrased)[-120:])}")

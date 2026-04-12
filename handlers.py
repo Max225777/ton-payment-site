@@ -40,7 +40,7 @@ from services import (
     log_event,
     parse_channel_sources,
     save_last_published,
-    get_source, set_pattern_verified, send_pattern_verification_request,
+    get_source,
     DB_PATH, _fetchone,
 )
 
@@ -147,10 +147,6 @@ class AdminStates(StatesGroup):
     adj_amount  = State()
     set_sub_days = State()
 
-
-class PatternStates(StatesGroup):
-    """FSM for pattern verification correction flow."""
-    waiting_correction = State()
 
 
 # ─── KEYBOARDS ────────────────────────────────────────────────────────────────
@@ -757,151 +753,6 @@ async def ap_skip(cq: CallbackQuery, bot: Bot):
     lang = await _ul(cq.from_user.id)
     await bot.send_message(cq.from_user.id, uts(lang, "ap_skipped"), parse_mode=ParseMode.HTML)
     await cq.answer()
-
-
-# ─── PATTERN VERIFICATION FLOW ────────────────────────────────────────────────
-
-async def _user_owns_source(tg_id: int, src_id: int) -> bool:
-    """Verify that the given Telegram user owns the channel that owns this source.
-    Admins bypass this check."""
-    if tg_id in ADMIN_IDS:
-        return True
-    try:
-        src = await get_source(src_id)
-        if not src:
-            return False
-        channels = await get_user_channels(tg_id)
-        return any(c["id"] == src["channel_id"] for c in channels)
-    except Exception:
-        return False
-
-
-@router.callback_query(F.data.startswith("patv_ok:"))
-async def patv_ok(cq: CallbackQuery, state: FSMContext):
-    """User confirmed cleaning pattern looks correct → mark source as verified."""
-    try:
-        src_id = int(cq.data.split(":")[1])
-        if not await _user_owns_source(cq.from_user.id, src_id):
-            await cq.answer("⛔ Нет прав", show_alert=True); return
-        await set_pattern_verified(src_id, True)
-        await state.clear()
-        src = await get_source(src_id)
-        name = (src.get("username") or src.get("title") or f"#{src_id}") if src else f"#{src_id}"
-        try:
-            await cq.message.edit_text(
-                f"✅ <b>Паттерн подтвержден</b>\n📡 Источник: <b>@{name}</b>\n\n"
-                "Теперь рядом с этим источником будет зеленая галочка ✔︎\n"
-                "Посты будут парситься с применением этого паттерна.",
-                parse_mode=ParseMode.HTML
-            )
-        except TelegramBadRequest:
-            pass
-        await cq.answer("✅ Подтверждено!")
-    except Exception as _e:
-        log.warning(f"patv_ok error: {_e}")
-        try:
-            await cq.answer(f"❌ Ошибка: {_e}", show_alert=True)
-        except Exception:
-            pass
-
-
-@router.callback_query(F.data.startswith("patv_cancel:"))
-async def patv_cancel(cq: CallbackQuery, state: FSMContext):
-    """User cancelled the verification dialog."""
-    try:
-        src_id = int(cq.data.split(":")[1])
-        if not await _user_owns_source(cq.from_user.id, src_id):
-            await cq.answer("⛔ Нет прав", show_alert=True); return
-        await state.clear()
-        try:
-            await cq.message.edit_text("❌ Проверка отменена.")
-        except TelegramBadRequest:
-            pass
-        await cq.answer("Отменено")
-    except Exception as _e:
-        log.warning(f"patv_cancel error: {_e}")
-        try:
-            await cq.answer(f"❌ Ошибка: {_e}", show_alert=True)
-        except Exception:
-            pass
-
-
-@router.callback_query(F.data.startswith("patv_fix:"))
-async def patv_fix(cq: CallbackQuery, state: FSMContext):
-    """User wants to provide a correction pattern."""
-    try:
-        src_id = int(cq.data.split(":")[1])
-        if not await _user_owns_source(cq.from_user.id, src_id):
-            await cq.answer("⛔ Нет прав", show_alert=True); return
-        await state.update_data(patv_src_id=src_id)
-        await state.set_state(PatternStates.waiting_correction)
-        try:
-            await cq.message.edit_text(
-                "✏️ Отправьте текст/фрагмент, который нужно вырезать из постов этого источника.\n\n"
-                "Следующее текстовое сообщение будет добавлено как паттерн.\n\n"
-                "<i>Пример: если подпись выглядит так:</i>\n"
-                "<code>📢 Наш канал | @channel</code>\n"
-                "<i>— отправьте этот текст целиком.</i>",
-                parse_mode=ParseMode.HTML
-            )
-        except TelegramBadRequest:
-            pass
-        await cq.answer()
-    except Exception as _e:
-        log.warning(f"patv_fix error: {_e}")
-        try:
-            await cq.answer(f"❌ Ошибка: {_e}", show_alert=True)
-        except Exception:
-            pass
-
-
-@router.message(PatternStates.waiting_correction)
-async def patv_correction_input(msg: Message, state: FSMContext):
-    """Receive correction pattern text, add to source_patterns, re-send verification."""
-    data = await state.get_data()
-    src_id = data.get("patv_src_id")
-    await state.clear()
-    if not src_id:
-        return
-    if not await _user_owns_source(msg.from_user.id, src_id):
-        await msg.answer("⛔ Нет прав на этот источник.")
-        return
-    pattern = (msg.text or "").strip()
-    if not pattern:
-        await msg.answer("❌ Пустой паттерн — отменено.")
-        return
-    # Save manual pattern
-    import aiosqlite as _aio
-    try:
-        async with _aio.connect(DB_PATH, timeout=10) as db:
-            await db.execute(
-                "INSERT INTO source_patterns(source_id, pattern, auto) VALUES(?,?,0)",
-                (src_id, pattern))
-            # Any new pattern invalidates prior verification
-            await db.execute(
-                "UPDATE sources SET pattern_verified=0 WHERE id=?", (src_id,))
-            await db.commit()
-    except Exception as _e:
-        await msg.answer(f"❌ Не удалось сохранить паттерн: {_e}")
-        return
-    await msg.answer(
-        f"✅ Паттерн добавлен:\n<code>{pattern[:200]}</code>\n\n"
-        "Сейчас пришлю новые примеры очистки для повторной проверки...",
-        parse_mode=ParseMode.HTML
-    )
-    # Re-apply patterns to existing pending posts and re-send verification examples
-    try:
-        from services import _get_source_signature, reprocess_pending_with_signature
-        src = await get_source(src_id)
-        if src:
-            sig = await _get_source_signature(src_id)
-            await reprocess_pending_with_signature(src["channel_id"], src_id, sig or "")
-    except Exception as _e:
-        log.debug(f"patv_correction reprocess: {_e}")
-    try:
-        await send_pattern_verification_request(src_id)
-    except Exception as _e:
-        log.warning(f"patv_correction resend: {_e}")
 
 
 # ─── /login <user_id> — admin miniapp impersonation ──────────────────────────
