@@ -1653,7 +1653,19 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
     if not client:
         return ''
     try:
-        entity = await client.get_entity('@' + username.lstrip('@'))
+        _un = username.lstrip('@').lstrip('+')
+        # Handle private channels (invite links)
+        if username.startswith('+') or username.startswith('@+'):
+            from telethon.tl.functions.messages import CheckChatInviteRequest
+            from telethon.tl.types import ChatInviteAlready
+            _h = username.lstrip('@').lstrip('+')
+            res = await client(CheckChatInviteRequest(hash=_h))
+            if isinstance(res, ChatInviteAlready):
+                entity = res.chat
+            else:
+                raise Exception(f"not yet joined (+{_h})")
+        else:
+            entity = await client.get_entity('@' + _un)
         messages = await client.get_messages(entity, limit=10)
         for _m in messages:
             try: _m.media = None
