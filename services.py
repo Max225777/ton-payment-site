@@ -1274,7 +1274,7 @@ def sanitize_html_for_telegram(text: str) -> str:
 
     from html.parser import HTMLParser
 
-    ALLOWED_WITH_A = ALLOWED | {"a"}
+    ALLOWED_WITH_A = ALLOWED | {"a", "tg-custom-emoji"}
 
     class TGHTMLCleaner(HTMLParser):
         def __init__(self):
@@ -1292,6 +1292,12 @@ def sanitize_html_for_telegram(text: str) -> str:
                 if href:
                     self.result.append(f'<a href="{href}">')
                     self.stack.append("a")
+            elif tag == "tg-custom-emoji":
+                attr_dict = dict(attrs)
+                eid = attr_dict.get("emoji-id", "")
+                if eid:
+                    self.result.append(f'<tg-custom-emoji emoji-id="{eid}">')
+                    self.stack.append("tg-custom-emoji")
 
         def handle_endtag(self, tag):
             if tag not in ALLOWED_WITH_A:
@@ -2800,6 +2806,45 @@ async def _resolve_source_entity(client, source: dict):
     raise Exception(f"cannot resolve entity for source {source_id} ({username})")
 
 
+import re as _re_emoji
+_RE_EMOJI_TAG = _re_emoji.compile(r'<emoji\s+id="(\d+)">(.*?)</emoji>', _re_emoji.DOTALL)
+
+def _msg_to_html(m) -> str:
+    """Convert Telethon message to HTML with premium custom emoji support."""
+    from telethon.extensions import html as tl_html
+    try:
+        raw = tl_html.unparse(
+            getattr(m, "text", "") or "",
+            getattr(m, "entities", None) or []
+        ).strip()
+    except Exception:
+        raw = (getattr(m, "text", None) or "").strip()
+        return raw
+    # Convert Telethon <emoji id="X">Y</emoji> → Bot API <tg-custom-emoji emoji-id="X">Y</tg-custom-emoji>
+    if '<emoji ' in raw:
+        raw = _RE_EMOJI_TAG.sub(r'<tg-custom-emoji emoji-id="\1">\2</tg-custom-emoji>', raw)
+    # Fallback: if Telethon didn't convert them, handle entities manually
+    if not '<tg-custom-emoji' in raw:
+        try:
+            from telethon.tl.types import MessageEntityCustomEmoji
+            entities = getattr(m, "entities", None) or []
+            customs = [e for e in entities if isinstance(e, MessageEntityCustomEmoji)]
+            if customs:
+                text = getattr(m, "text", "") or ""
+                # Apply in reverse order to preserve offsets
+                for ce in sorted(customs, key=lambda e: e.offset, reverse=True):
+                    emoji_char = text[ce.offset:ce.offset + ce.length]
+                    tag = f'<tg-custom-emoji emoji-id="{ce.document_id}">{emoji_char}</tg-custom-emoji>'
+                    # Find the emoji_char in raw HTML and wrap it
+                    # Simple replacement — first occurrence from the rough position
+                    idx = raw.find(emoji_char)
+                    if idx >= 0:
+                        raw = raw[:idx] + tag + raw[idx + len(emoji_char):]
+        except ImportError:
+            pass
+    return raw
+
+
 def _max_age_cutoff(settings: dict):
     """Return a naive-UTC datetime; messages dated before it should be skipped.
 
@@ -2989,16 +3034,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             if msg.grouped_id and msg.id in saved_msg_ids:
                 processed_groups.add(msg.grouped_id)
 
-        from telethon.extensions import html as tl_html
-
-        def msg_to_html(m) -> str:
-            try:
-                return tl_html.unparse(
-                    getattr(m, "text", "") or "",
-                    getattr(m, "entities", None) or []
-                ).strip()
-            except Exception:
-                return (getattr(m, "text", None) or "").strip()
+        msg_to_html = _msg_to_html
 
         # Use saved promo signature (detected when source was added)
         source_signature = await _get_source_signature(source["id"])
@@ -3191,7 +3227,6 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
     """
     from telethon import TelegramClient
     from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
-    from telethon.extensions import html as tl_html
     import json as _json
 
     client, session_num = await _get_telethon_client()
@@ -3267,14 +3302,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
                 except Exception:
                     pass
 
-        def msg_to_html(m) -> str:
-            try:
-                return tl_html.unparse(
-                    getattr(m, "text", "") or "",
-                    getattr(m, "entities", None) or []
-                ).strip()
-            except Exception:
-                return (getattr(m, "text", None) or "").strip()
+        msg_to_html = _msg_to_html
 
         processed_groups: set = set()
         candidates = []
@@ -3385,7 +3413,6 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
     """Deep collect: fetch posts OLDER than what's already in DB."""
     from telethon import TelegramClient
     from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
-    from telethon.extensions import html as tl_html
     import json as _json
 
     async with aiosqlite.connect(DB_PATH, timeout=30) as _db:
@@ -3420,11 +3447,7 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
 
         log.info(f"  deep: got {len(batch)} older posts for @{source['username']}")
 
-        def msg_to_html(m) -> str:
-            try:
-                return tl_html.unparse(getattr(m,"text","") or "", getattr(m,"entities",None) or []).strip()
-            except Exception:
-                return (getattr(m,"text",None) or "").strip()
+        msg_to_html = _msg_to_html
 
         albums: dict = {}
         for msg in batch:
@@ -3771,16 +3794,8 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
         age_cutoff = _max_age_cutoff(settings)
 
         from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
-        from telethon.extensions import html as tl_html
 
-        def msg_to_html(m) -> str:
-            try:
-                return tl_html.unparse(
-                    getattr(m, "text", "") or "",
-                    getattr(m, "entities", None) or []
-                ).strip()
-            except Exception:
-                return (getattr(m, "text", None) or "").strip()
+        msg_to_html = _msg_to_html
 
         albums: dict = {}
         for msg in batch:

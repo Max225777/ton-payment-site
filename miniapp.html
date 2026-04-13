@@ -2478,7 +2478,7 @@ function renderMp(list){
 }
 function _fmtNum(n){if(n>=1000000)return (n/1000000).toFixed(1)+'M';if(n>=1000)return (n/1000).toFixed(n>=10000?0:1)+'K';return n.toString();}
 function _escHtml(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-function _safeHtml(s){if(!s)return '';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/&lt;(\/?)(b|i|u|s|code|pre|em|strong|blockquote)&gt;/gi,function(m,sl,tag){return '<'+sl+tag.toLowerCase()+'>';}).replace(/&lt;a\s+href=&quot;(https?:\/\/[^&]*)&quot;&gt;/gi,function(m,url){return '<a href="'+url+'" target="_blank" style="color:var(--ac)">';}).replace(/&lt;a\s+href=&amp;quot;(https?:\/\/[^&]*)&amp;quot;&gt;/gi,function(m,url){return '<a href="'+url+'" target="_blank" style="color:var(--ac)">';}).replace(/&lt;\/a&gt;/gi,'</a>').replace(/\n/g,'<br>');}
+function _safeHtml(s){if(!s)return '';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/&lt;(\/?)(b|i|u|s|code|pre|em|strong|blockquote)&gt;/gi,function(m,sl,tag){return '<'+sl+tag.toLowerCase()+'>';}).replace(/&lt;a\s+href=&quot;(https?:\/\/[^&]*)&quot;&gt;/gi,function(m,url){return '<a href="'+url+'" target="_blank" style="color:var(--ac)">';}).replace(/&lt;a\s+href=&amp;quot;(https?:\/\/[^&]*)&amp;quot;&gt;/gi,function(m,url){return '<a href="'+url+'" target="_blank" style="color:var(--ac)">';}).replace(/&lt;\/a&gt;/gi,'</a>').replace(/&lt;tg-custom-emoji[^&]*&gt;/gi,'').replace(/&lt;\/tg-custom-emoji&gt;/gi,'').replace(/\n/g,'<br>');}
 
 // ── VIDEO OVERLAY ──────────────────────────────────────────────────────────
 
