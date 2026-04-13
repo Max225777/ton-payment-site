@@ -822,6 +822,17 @@ ru:{
   post_max_age:'Макс. возраст поста', post_max_age_desc:'Не парсить посты старше указанного срока',
   age_hours:'ч', age_days:'дн', age_unlimited:'∞ (без огран.)',
   queue_empty_hint:'Добавьте новые источники или увеличьте максимальный возраст постов в настройках автопостинга.',
+  queue_exhausted:'📭 Посты из доступных источников закончились',
+  queue_no_sources:'Добавьте источники, чтобы бот начал парсить посты.',
+  queue_no_working_sources:'Все источники недоступны — проверьте вкладку «Источники».',
+  queue_hint_title:'Как получить больше постов?',
+  queue_hint_age:'Сейчас бот парсит посты не старше <b>{days} дн.</b> Перейдите в <b>Настройки канала → Макс. возраст поста</b> и увеличьте лимит (до 30 дней), чтобы парсить старые посты.',
+  issue_expired_title:'Просроченное приглашение',
+  issue_expired_desc:'Ссылка-приглашение для {names} истекла. Удалите источник и добавьте заново с новой ссылкой.',
+  issue_pending_title:'Ожидание подтверждения',
+  issue_pending_desc:'Заявка на вступление в {names} ещё не одобрена. Бот проверяет автоматически каждые 5 минут.',
+  issue_error_title:'Ошибка подключения',
+  issue_error_desc:'Не удалось подключиться к {names}. Удалите источник и добавьте заново.',
   sub_section:'Подписка', autorenew_setting:'Автопродление подписки',
   autorenew_setting_desc:'За 1 час до окончания автоматически списывает $<span id="s-price">2</span> с баланса и продлевает подписку на 30 дней.',
   postbtn_section:'Ссылка в конце поста', postbtn_enable:'Включить',
@@ -980,6 +991,17 @@ uk:{
   post_max_age:'Макс. вік поста', post_max_age_desc:'Не парсити пости старші за вказаний термін',
   age_hours:'год', age_days:'дн', age_unlimited:'∞ (без обмеж.)',
   queue_empty_hint:'Додайте нові джерела або збільшіть максимальний вік постів у налаштуваннях автопостингу.',
+  queue_exhausted:'пости з доступних джерел закінчились',
+  queue_no_sources:'Додайте джерела, щоб бот почав парсити пости.',
+  queue_no_working_sources:'Всі джерела недоступні — перевірте вкладку «Джерела».',
+  queue_hint_title:'Як отримати більше постів?',
+  queue_hint_age:'Зараз бот парсить пости не старші за <b>{days} дн.</b> Перейдіть у <b>Налаштування каналу → Макс. вік поста</b> і збільшіть ліміт (до 30 днів), щоб парсити старі пости.',
+  issue_expired_title:'Прострочене запрошення',
+  issue_expired_desc:'Посилання-запрошення для {names} закінчилось. Видаліть джерело і додайте заново з новим посиланням.',
+  issue_pending_title:'Очікування підтвердження',
+  issue_pending_desc:'Заявка на вступ до {names} ще не схвалена. Бот перевіряє автоматично кожні 5 хвилин.',
+  issue_error_title:'Помилка підключення',
+  issue_error_desc:'Не вдалось підключитись до {names}. Видаліть джерело і додайте заново.',
   sub_section:'Підписка', autorenew_setting:'Автопродовження підписки',
   autorenew_setting_desc:'За 1 год до закінчення автоматично списує $<span id="s-price">2</span> з балансу і продовжує підписку на 30 днів.',
   postbtn_section:'Посилання в кінці поста', postbtn_enable:'Увімкнути',
@@ -1699,6 +1721,7 @@ async function saveSettings(){
 }
 
 // ── QUEUE ────────────────────────────────────────────────────────────────────
+var Q_ISSUES=[], Q_MAX_AGE='48', Q_TOTAL_SRC=0, Q_WORKING_SRC=0;
 async function openQueue(id){
   CUR_CH=id;openOv('ov-q');
   document.getElementById('q-wrap').innerHTML='<div class="sk" style="height:150px;border-radius:18px"></div>';
@@ -1706,22 +1729,82 @@ async function openQueue(id){
     const _qr=await api('GET','/api/channel/'+id+'/queue');
     Q_DATA=Array.isArray(_qr)?_qr:(_qr.posts||[]);
     Q_POSTBTN=(!Array.isArray(_qr)&&_qr.postbtn)||{};
+    Q_ISSUES=(!Array.isArray(_qr)&&_qr.source_issues)||[];
+    Q_MAX_AGE=(!Array.isArray(_qr)&&_qr.max_age_h)||'48';
+    Q_TOTAL_SRC=(!Array.isArray(_qr)&&_qr.total_sources)||0;
+    Q_WORKING_SRC=(!Array.isArray(_qr)&&_qr.working_sources)||0;
     renderQ()
   }
   catch(e){toast(t('error')+e.message)}
+}
+function _buildQueueIssues(){
+  var h='';
+  // Expired invite links
+  var expired=Q_ISSUES.filter(function(i){return i.type==='expired'});
+  if(expired.length){
+    var names=expired.map(function(i){return '<b>'+_escHtml(i.name)+'</b>'}).join(', ');
+    h+='<div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);border-radius:14px;padding:14px 16px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">🔗</span>'
+      +'<span style="font-size:13px;font-weight:700;color:#f55">'+t('issue_expired_title')+'</span></div>'
+      +'<div style="font-size:12px;color:var(--tx);line-height:1.5;opacity:.85">'
+      +t('issue_expired_desc',{names:names})+'</div></div>';
+  }
+  // Pending join requests
+  var pending=Q_ISSUES.filter(function(i){return i.type==='pending'});
+  if(pending.length){
+    var names2=pending.map(function(i){return '<b>'+_escHtml(i.name)+'</b>'}).join(', ');
+    h+='<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.25);border-radius:14px;padding:14px 16px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">🔒</span>'
+      +'<span style="font-size:13px;font-weight:700;color:var(--yel)">'+t('issue_pending_title')+'</span></div>'
+      +'<div style="font-size:12px;color:var(--tx);line-height:1.5;opacity:.85">'
+      +t('issue_pending_desc',{names:names2})+'</div></div>';
+  }
+  // Error sources
+  var errs=Q_ISSUES.filter(function(i){return i.type==='error'});
+  if(errs.length){
+    var names3=errs.map(function(i){return '<b>'+_escHtml(i.name)+'</b>'}).join(', ');
+    h+='<div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);border-radius:14px;padding:14px 16px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">⚠️</span>'
+      +'<span style="font-size:13px;font-weight:700;color:#f55">'+t('issue_error_title')+'</span></div>'
+      +'<div style="font-size:12px;color:var(--tx);line-height:1.5;opacity:.85">'
+      +t('issue_error_desc',{names:names3})+'</div></div>';
+  }
+  return h;
 }
 function renderQ(){
   const wrap=document.getElementById('q-wrap');
   document.getElementById('q-chip').textContent=Q_DATA.length+'/5 '+t('posts_count');
   if(!Q_DATA.length){
-    wrap.innerHTML='<div style="text-align:center;padding:50px 20px;color:var(--mu);font-size:15px">'
-      +t('queue_empty')
-      +'<div style="margin-top:14px;font-size:13px;color:var(--mu);line-height:1.55;max-width:320px;margin-left:auto;margin-right:auto">'
-      +t('queue_empty_hint')
-      +'</div></div>';
+    var issuesHtml=_buildQueueIssues();
+    var mageH=parseInt(Q_MAX_AGE,10)||48;
+    var mageDays=Math.round(mageH/24*10)/10;
+    var emptyHtml='<div style="padding:20px 16px">';
+    // Source issues banner
+    if(issuesHtml)emptyHtml+=issuesHtml;
+    // No working sources
+    if(Q_WORKING_SRC===0&&Q_TOTAL_SRC>0){
+      emptyHtml+='<div style="text-align:center;padding:30px 0;color:var(--mu);font-size:15px">'
+        +t('queue_no_working_sources')+'</div>';
+    } else if(Q_TOTAL_SRC===0){
+      emptyHtml+='<div style="text-align:center;padding:30px 0;color:var(--mu);font-size:15px">'
+        +t('queue_no_sources')+'</div>';
+    } else {
+      // Sources work but queue empty = posts exhausted
+      emptyHtml+='<div style="text-align:center;padding:30px 0 10px;color:var(--mu);font-size:15px">'
+        +t('queue_exhausted')+'</div>';
+      // Hint about max_age
+      emptyHtml+='<div style="background:rgba(100,140,255,.08);border:1px solid rgba(100,140,255,.2);border-radius:14px;padding:14px 16px;margin-top:10px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">💡</span>'
+        +'<span style="font-size:13px;font-weight:700;color:var(--ac)">'+t('queue_hint_title')+'</span></div>'
+        +'<div style="font-size:12px;color:var(--tx);line-height:1.55;opacity:.85">'
+        +t('queue_hint_age',{days:mageDays})+'</div></div>';
+    }
+    emptyHtml+='</div>';
+    wrap.innerHTML=emptyHtml;
     return;
   }
-  wrap.innerHTML='';
+  var issuesBanner=_buildQueueIssues();
+  wrap.innerHTML=issuesBanner?('<div style="padding:12px 16px 0">'+issuesBanner+'</div>'):'';
   Q_DATA.forEach((p,i)=>{
     const d=document.createElement('div');d.className='q-post';d.style.animationDelay=(i*.07)+'s';d.dataset.id=p.id;
     const miLabel={photo:t('photo'),video:t('video'),album:t('album'),animation:t('gif')}[p.media_type]||t('text_only');

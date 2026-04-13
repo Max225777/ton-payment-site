@@ -613,7 +613,7 @@ async def api_channel_parse(request):
 
 @_auth
 async def api_queue(request):
-    from services import get_user_channels, get_pending_posts, get_channel_settings
+    from services import get_user_channels, get_pending_posts, get_channel_settings, get_channel_sources
     from urllib.parse import quote as _q
     import json as _jsq
     tg_id = request["tg_user"]["id"]
@@ -658,7 +658,28 @@ async def api_queue(request):
     postbtn = {}
     if ch_set.get("postbtn_enabled") and ch_set.get("postbtn_url"):
         postbtn = {"label":ch_set.get("postbtn_label",""),"url":ch_set.get("postbtn_url","")}
-    return _j({"posts":result,"postbtn":postbtn})
+    # Collect source issues for UI hints
+    sources = await get_channel_sources(ch_id)
+    active_sources = [s for s in sources if s.get("is_active", 1)]
+    source_issues = []
+    for s in active_sources:
+        js = s.get("join_status")
+        if js == "expired":
+            source_issues.append({"type": "expired", "name": s.get("title") or s.get("username", ""),
+                                   "source_id": s["id"]})
+        elif js == "pending":
+            source_issues.append({"type": "pending", "name": s.get("title") or s.get("username", ""),
+                                   "source_id": s["id"]})
+        elif js == "error":
+            source_issues.append({"type": "error", "name": s.get("title") or s.get("username", ""),
+                                   "source_id": s["id"]})
+    max_age_h = ch_set.get("autopost_max_age_h", "48")
+    return _j({"posts": result, "postbtn": postbtn,
+               "source_issues": source_issues,
+               "max_age_h": max_age_h,
+               "total_sources": len(active_sources),
+               "working_sources": len([s for s in active_sources
+                                        if s.get("join_status") not in ("expired", "pending", "error")])})
 
 @_auth
 async def api_queue_action(request):
