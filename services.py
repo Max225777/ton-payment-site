@@ -1412,6 +1412,7 @@ def build_footer(settings: dict, has_media: bool = False) -> str:
 # ─── AI ───────────────────────────────────────────────────────────────────────
 
 _ai_semaphore = asyncio.Semaphore(AI_MAX_PARALLEL)
+_download_semaphore = asyncio.Semaphore(2)  # Max 2 concurrent media downloads to prevent OOM
 
 
 async def log_ai_usage(user_id: int, tokens: int = 0):
@@ -1444,6 +1445,10 @@ os.makedirs(MEDIA_DIR, exist_ok=True)
 
 async def _download_and_get_file_id(client, msg, media_type: str) -> Optional[str]:
     """Download media via Telethon → upload via Bot API → return file_id. No admin chat used."""
+    async with _download_semaphore:
+        return await _download_and_get_file_id_inner(client, msg, media_type)
+
+async def _download_and_get_file_id_inner(client, msg, media_type: str) -> Optional[str]:
     local_path = None
     try:
         # Quick size check — skip files that are too large before downloading
@@ -2261,8 +2266,8 @@ async def process_text_ai(text: str, mode: str, settings: dict,
                 cleaned = _cut_source_signature(cleaned, _pat)
             log.info(f"  [S5b] after post-rephrase sig cut END: {repr(_plain(cleaned)[-120:])}")
 
-            # Step 6: Translate
-            if channel_lang and channel_lang != "off":
+            # Step 6: Translate (skip when ai_mode=off — user disabled all AI processing)
+            if channel_lang and channel_lang != "off" and ai_mode != "off":
                 lang_name = TRANSLATE_SUFFIX.get(channel_lang, channel_lang)
                 log.info(f"  [S6] translating to {lang_name}...")
                 _remove_frags = []
@@ -2297,6 +2302,8 @@ async def process_text_ai(text: str, mode: str, settings: dict,
                     log.info(f"  [S6] translated OK: {repr(_plain(result)[:120])}")
                     return result
                 log.warning("  [S6] translate returned empty, using untranslated")
+            elif ai_mode == "off" and channel_lang and channel_lang != "off":
+                log.info("  [S6] translation skipped (ai_mode=off)")
             else:
                 log.info("  [S6] no translation (lang=off)")
 
