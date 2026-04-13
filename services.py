@@ -3098,6 +3098,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
         fetched_total = 0
         offset_id = 0
         hit_age_wall = False
+        _total_new_before_age = 0
 
         while fetched_total < 5000:
             try:
@@ -3110,6 +3111,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
             fetched_total += len(batch)
             offset_id = batch[-1].id
             new_in_batch = [m for m in batch if m.id not in parsed_ids]
+            _total_new_before_age += len(new_in_batch)
             if age_cutoff is not None:
                 kept = [m for m in new_in_batch if not _msg_is_older_than(m, age_cutoff)]
                 if len(kept) < len(new_in_batch):
@@ -3122,6 +3124,10 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
                 break
             if len(batch) < FETCH_BATCH:
                 break
+
+        log.info(f"  _collect @{source['username']}: fetched={fetched_total} seen_ids={len(parsed_ids)} "
+                 f"new_before_age={_total_new_before_age} after_age={len(all_messages)} "
+                 f"age_h={settings.get('autopost_max_age_h','48')} hit_wall={hit_age_wall}")
 
         # Group albums
         albums: dict = {}
@@ -3280,7 +3286,18 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
     results = []
     try:
         try:
-            entity = await client.get_entity(f"@{source['username']}")
+            inv_hash = source.get('invite_hash')
+            if inv_hash or source['username'].startswith('+'):
+                from telethon.tl.functions.messages import CheckChatInviteRequest
+                from telethon.tl.types import ChatInviteAlready
+                _h = inv_hash or source['username'].lstrip('+')
+                res = await client(CheckChatInviteRequest(hash=_h))
+                if isinstance(res, ChatInviteAlready):
+                    entity = res.chat
+                else:
+                    raise Exception(f"not yet joined (+{_h})")
+            else:
+                entity = await client.get_entity(f"@{source['username']}")
         except Exception as e:
             log.warning(f"  deep_collect @{source['username']}: {e}")
             return []
@@ -3308,14 +3325,17 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
         blacklist_extra = settings.get("blacklist", [])
         age_cutoff = _max_age_cutoff(settings)
         candidates = []
+        _skip_seen = _skip_age = _skip_empty = 0
         for msg in reversed(batch):
             if msg.id in published_ids:
+                _skip_seen += 1
                 continue
             if _msg_is_older_than(msg, age_cutoff):
-                # Honour user's max-age setting even in deep-history mode.
+                _skip_age += 1
                 continue
             has_text = bool((getattr(msg, "text", None) or "").strip())
             if not msg.media and not has_text:
+                _skip_empty += 1
                 continue
             if msg.grouped_id and msg.grouped_id in processed_groups:
                 continue
@@ -3395,7 +3415,15 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
             for r in br:
                 if r is not None:
                     results.append(r)
-        log.info(f"  deep: collected {len(results)} from @{source['username']}")
+        log.info(f"  deep: collected {len(results)} from @{source['username']} "
+                 f"(skip: seen={_skip_seen} age={_skip_age} empty={_skip_empty})")
+
+        # Mark deep-fetched messages as seen to avoid re-fetching
+        try:
+            _seen_deep = [(m.id, getattr(m, 'grouped_id', None)) for m in batch if getattr(m, 'id', None)]
+            await mark_messages_seen(channel_id, source["id"], _seen_deep)
+        except Exception as _se:
+            log.debug(f"  mark_messages_seen (deep): {_se}")
 
     except Exception as e:
         log.error(f"deep_collect @{source['username']}: {e}")
