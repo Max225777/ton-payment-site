@@ -819,7 +819,7 @@ async def add_source(channel_id: int, username_or_url: str) -> dict:
     join_status = None
     entity = None
     try:
-        client, _ = await _get_telethon_client()
+        client, _sess_num = await _get_telethon_client()
         if client:
             try:
                 if invite_hash:
@@ -879,6 +879,7 @@ async def add_source(channel_id: int, username_or_url: str) -> dict:
             finally:
                 try: await client.disconnect()
                 except Exception: pass
+                release_telethon_session(_sess_num)
     except Exception:
         pass
 
@@ -916,7 +917,7 @@ async def check_pending_join_requests():
     if not rows:
         return
     log.info(f"Checking {len(rows)} pending join request(s)...")
-    client, _ = await _get_telethon_client()
+    client, _sess_num = await _get_telethon_client()
     if not client:
         return
     try:
@@ -978,6 +979,7 @@ async def check_pending_join_requests():
             await client.disconnect()
         except Exception:
             pass
+        release_telethon_session(_sess_num)
 
 
 async def toggle_source(source_id: int):
@@ -1675,12 +1677,13 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
         for _m in messages:
             try: _m.media = None
             except: pass
-        await client.disconnect()
     except Exception as _e:
         log.warning(f'detect_signature @{username}: {_e}')
+        return ''
+    finally:
         try: await client.disconnect()
         except: pass
-        return ''
+        release_telethon_session(_num)
 
     # Collect plain text of each post
     posts = []
@@ -2537,14 +2540,35 @@ _session_rr_index: int = 0
 _session_last_switch: float = 0.0  # timestamp of last hourly switch
 SESSION_ROTATE_HOURS: float = float(os.getenv("SESSION_ROTATE_HOURS", "1"))
 
+# ── Session pool: one Lock per .session file ──
+_session_locks: dict = {}      # session_num_str → asyncio.Lock
+_session_lock_init = False
+
+def _ensure_session_locks():
+    """Create one asyncio.Lock per discovered session file."""
+    global _session_lock_init
+    if _session_lock_init:
+        return
+    _session_lock_init = True
+    import glob, os as _os
+    for f in glob.glob("*.session"):
+        name = _os.path.splitext(_os.path.basename(f))[0]
+        if name.isdigit() and name not in _session_locks:
+            _session_locks[name] = asyncio.Lock()
+    if not _session_locks and TELETHON_SESSION:
+        _session_locks["1"] = asyncio.Lock()
+
 async def _get_telethon_client():
-    """Auto-discover N.session files. Rotates every SESSION_ROTATE_HOURS hours.
-    Falls back to next if current is unavailable or errors.
+    """Get a Telethon client from the session pool.
+    Acquires a per-session lock so no two callers share the same .session file.
     Returns (client, session_num) or (None, None).
+    Caller MUST call release_telethon_session(num) after client.disconnect()!
     """
     global _session_rr_index, _session_last_switch
     import glob, os as _os, time as _time
     from telethon import TelegramClient
+
+    _ensure_session_locks()
 
     # Discover all N.session files
     session_files = sorted(
@@ -2565,6 +2589,8 @@ async def _get_telethon_client():
     for num, _ in session_files:
         if str(num) not in _SESSION_STATUS:
             _SESSION_STATUS[str(num)] = {"ok": True, "error": None, "last_ok": None, "last_fail": None, "fail_count": 0}
+        if str(num) not in _session_locks:
+            _session_locks[str(num)] = asyncio.Lock()
 
     api_id   = TELETHON_API_ID
     api_hash = TELETHON_API_HASH
@@ -2574,7 +2600,7 @@ async def _get_telethon_client():
 
     configured = [(api_id, api_hash, sess_file, str(num)) for num, sess_file in session_files]
 
-    # Hourly rotation: switch to next session every N hours
+    # Hourly rotation
     now_ts = _time.time()
     rotate_secs = SESSION_ROTATE_HOURS * 3600
     if now_ts - _session_last_switch >= rotate_secs:
@@ -2583,9 +2609,8 @@ async def _get_telethon_client():
         log.info(f"Session hourly rotate → session {configured[_session_rr_index][3]}")
 
     async def _try(api_id, api_hash, sess_file, num):
-        """Connect using existing .session file only. Never prompts for phone/code."""
+        """Connect using existing .session file only."""
         import os
-        # Check if session file exists — skip if not
         sess_path = sess_file if sess_file.endswith(".session") else sess_file + ".session"
         if not os.path.exists(sess_path):
             log.warning(f"Session {num}: file '{sess_path}' not found — skipping")
@@ -2597,7 +2622,6 @@ async def _get_telethon_client():
                 device_model="AutoPostBot", system_version="1.0",
                 app_version="1.0", lang_code="uk", system_lang_code="uk"
             )
-            # No interactive auth — connect only, never ask for phone/code
             await c.connect()
             if not await c.is_user_authorized():
                 log.warning(f"Session {num}: not authorized (re-login required)")
@@ -2616,7 +2640,6 @@ async def _get_telethon_client():
                     except Exception:
                         pass
                 return None
-            # Quick test — detect any error (not just banned)
             try:
                 from telethon.tl.functions.users import GetUsersRequest as _GUR
                 from telethon.tl.types import InputUserSelf as _IUS
@@ -2640,7 +2663,6 @@ async def _get_telethon_client():
                         except Exception: pass
                     return None
                 else:
-                    # Any other error (flood, network etc) — mark as invalid and rotate
                     log.warning(f"Session {num} test request failed — marking invalid: {_te}")
                     _mark_session_fail(num, str(_te))
                     await c.disconnect()
@@ -2652,17 +2674,44 @@ async def _get_telethon_client():
             _mark_session_fail(num, str(e))
             return None
 
-    # Start from current hourly-rotated index, try each in order
+    # Round-robin: try each session starting from current index
     start = _session_rr_index % len(configured)
     order = configured[start:] + configured[:start]
+
+    # Pass 1: try sessions that are NOT locked (non-blocking)
     for api_id, api_hash, sess_file, num in order:
-        c = await _try(api_id, api_hash, sess_file, num)
-        if c:
-            log.info(f"Telethon: using session {num}")
-            return c, num
+        lock = _session_locks.get(num)
+        if lock and not lock.locked():
+            await lock.acquire()
+            c = await _try(api_id, api_hash, sess_file, num)
+            if c:
+                log.info(f"Telethon: using session {num}")
+                return c, num
+            # Session failed — release lock and try next
+            lock.release()
+
+    # Pass 2: all sessions busy — wait for the first available
+    log.info(f"All {len(configured)} sessions busy — waiting for one to free up...")
+    for api_id, api_hash, sess_file, num in order:
+        lock = _session_locks.get(num)
+        if lock:
+            await lock.acquire()  # blocking wait
+            c = await _try(api_id, api_hash, sess_file, num)
+            if c:
+                log.info(f"Telethon: using session {num} (after wait)")
+                return c, num
+            lock.release()
 
     log.error("All Telethon sessions unavailable")
     return None, None
+
+
+def release_telethon_session(num):
+    """Release session lock after client.disconnect(). Call in finally block."""
+    if num and str(num) in _session_locks:
+        lock = _session_locks[str(num)]
+        if lock.locked():
+            lock.release()
 
 
 async def _resolve_source_entity(client, source: dict):
@@ -2823,6 +2872,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             else:
                 log.warning(f"  _collect @{source['username']}: get_entity failed: {e}")
             await client.disconnect()
+            release_telethon_session(_sess_num)
             return 0
         settings = await get_channel_settings(channel_id)
         blacklist_extra = settings.get("blacklist", [])
@@ -3121,6 +3171,7 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             await client.disconnect()
         except Exception:
             pass
+        release_telethon_session(_sess_num)
 
     log.info(f"  @{source['username']}: {added} new posts saved")
     return added
@@ -3318,6 +3369,7 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
     finally:
         try: await client.disconnect()
         except Exception: pass
+        release_telethon_session(session_num)
 
     return results
 
@@ -3342,7 +3394,7 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
     if oldest_id == 0:
         return []
 
-    client, _ = await _get_telethon_client()
+    client, _sess_num = await _get_telethon_client()
     if not client:
         return []
 
@@ -3482,6 +3534,7 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
     finally:
         try: await client.disconnect()
         except Exception: pass
+        release_telethon_session(_sess_num)
 
     return results
 
@@ -3785,6 +3838,7 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
             await client.disconnect()
         except Exception:
             pass
+        release_telethon_session(_sess_num)
 
     # AI tasks
 
@@ -3793,15 +3847,26 @@ async def _parse_source_deep(channel_id: int, source: dict, max_add: int = QUEUE
     return added
 
 
-_parse_channel_semaphore = asyncio.Semaphore(6)  # Max 6 channels parsed concurrently
+_parse_channel_semaphore: asyncio.Semaphore | None = None
+
+def _get_parse_semaphore() -> asyncio.Semaphore:
+    """Return semaphore sized to match session count (created once)."""
+    global _parse_channel_semaphore
+    if _parse_channel_semaphore is None:
+        _ensure_session_locks()
+        n = max(len(_session_locks), 2)  # at least 2
+        _parse_channel_semaphore = asyncio.Semaphore(n)
+        log.info(f"Parse semaphore created with concurrency={n} (sessions found: {len(_session_locks)})")
+    return _parse_channel_semaphore
 
 async def parse_all_channels():
     """Run parsing for all active channels (parallel with semaphore)."""
+    sem = _get_parse_semaphore()
     channels = await get_all_channels()
     active = [ch for ch in channels if ch["subscription_status"] in ("active", "trial", "restricted")]
 
     async def _parse_one(ch_id):
-        async with _parse_channel_semaphore:
+        async with sem:
             try:
                 await parse_channel_sources(ch_id)
             except Exception as e:
