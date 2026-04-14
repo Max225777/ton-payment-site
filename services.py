@@ -4550,6 +4550,162 @@ async def should_autopost_now(channel: dict) -> bool:
     return True
 
 
+# ─── MIRROR MODE ──────────────────────────────────────────────────────────────
+
+async def mirror_check_and_publish(channel: dict, bot) -> int:
+    """Mirror mode: check sources for NEW posts, process & publish immediately.
+    Returns number of posts published."""
+    from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+    settings = channel.get("_settings", {})
+    ch_id = channel["id"]
+    chat_id = channel["chat_id"]
+    published = 0
+
+    sources = await get_channel_sources(ch_id)
+    active = [s for s in sources if s.get("is_active", 1)]
+    if not active:
+        return 0
+
+    client, _sess_num = await _get_telethon_client()
+    if not client:
+        return 0
+    try:
+        for source in active:
+            try:
+                entity = await _resolve_source_entity(client, source)
+            except Exception as e:
+                log.warning(f"  mirror @{source['username']}: resolve failed: {e}")
+                continue
+
+            # Load seen message IDs
+            parsed_ids, _ = await load_seen_message_ids(ch_id, source["id"])
+
+            # Fetch latest 20 messages
+            try:
+                batch = await client.get_messages(entity, limit=20)
+            except Exception as _fe:
+                log.warning(f"  mirror get_messages @{source['username']}: {_fe}")
+                continue
+            if not batch:
+                continue
+
+            # Filter new messages only
+            new_msgs = [m for m in batch if m.id not in parsed_ids and (
+                getattr(m, "text", None) or m.media
+            )]
+            if not new_msgs:
+                continue
+
+            log.info(f"  mirror @{source['username']}: {len(new_msgs)} new post(s)")
+
+            # Get source signature & patterns
+            source_signature = await _get_source_signature(source["id"])
+            source_extra_patterns = await _get_source_patterns_list(source["id"])
+            blacklist_extra = settings.get("blacklist", [])
+
+            # Process and publish each new message (oldest first)
+            for msg in reversed(new_msgs):
+                try:
+                    # Get HTML text
+                    text = _msg_to_html(msg)
+
+                    # Clean: remove signatures, links, ads
+                    if text:
+                        text = sanitize_html_for_telegram(text)
+                        text = _clean_links(text, source_signature, source_extra_patterns)
+                        text = _cut_source_signature(text, source_signature)
+                        for pat in source_extra_patterns:
+                            text = _cut_source_signature(text, pat)
+                        if contains_blacklisted(text, blacklist_extra):
+                            log.info(f"  mirror skip msg {msg.id}: blacklisted")
+                            continue
+                        # Remove empty tags, trim
+                        text = re.sub(r'<(\w+)>\s*</\1>', '', text).strip()
+
+                    # Skip empty text-only posts
+                    if not msg.media and not text:
+                        continue
+
+                    # Handle media
+                    media_type = None
+                    media_file_id = None
+                    media_files_json = None
+
+                    if msg.media:
+                        if isinstance(msg.media, MessageMediaPhoto):
+                            media_type = "photo"
+                            result = await _download_and_get_file_id(client, msg, "photo")
+                            if isinstance(result, tuple):
+                                media_file_id = result[0]
+                            else:
+                                media_file_id = result
+                        elif isinstance(msg.media, MessageMediaDocument):
+                            mime = getattr(msg.media.document, "mime_type", "") or ""
+                            if "video" in mime or "gif" in mime:
+                                media_type = "animation" if "gif" in mime else "video"
+                            else:
+                                media_type = "document"
+                            result = await _download_and_get_file_id(client, msg, media_type)
+                            if isinstance(result, tuple):
+                                media_file_id = result[0]
+                            else:
+                                media_file_id = result
+
+                    if not media_file_id and not text:
+                        continue
+
+                    # Build footer
+                    footer = build_footer(settings, has_media=bool(media_type))
+                    if footer:
+                        text = (text + footer) if text else ""
+
+                    # Post button
+                    if settings.get("postbtn_enabled") and settings.get("postbtn_label") and settings.get("postbtn_url"):
+                        text = (text or "") + '\n\n<b><a href="' + settings["postbtn_url"] + '">' + settings["postbtn_label"] + '</a></b>'
+
+                    # Publish directly to channel
+                    try:
+                        if media_type == "photo" and media_file_id:
+                            await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                        elif media_type == "video" and media_file_id:
+                            await bot.send_video(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                        elif media_type == "animation" and media_file_id:
+                            await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                        elif media_type == "document" and media_file_id:
+                            await bot.send_document(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                        elif text:
+                            await bot.send_message(chat_id, _safe_text(text), parse_mode="HTML")
+                        else:
+                            continue
+
+                        published += 1
+                        await save_last_published(ch_id, 0)
+                        log.info(f"  mirror ✓ published msg {msg.id} from @{source['username']}")
+                    except Exception as pub_e:
+                        log.warning(f"  mirror publish error msg {msg.id}: {pub_e}")
+
+                except Exception as proc_e:
+                    log.warning(f"  mirror process error msg {msg.id}: {proc_e}")
+
+            # Mark ALL fetched messages as seen (even skipped ones)
+            try:
+                seen_batch = [(m.id, getattr(m, 'grouped_id', None)) for m in batch if getattr(m, 'id', None)]
+                await mark_messages_seen(ch_id, source["id"], seen_batch)
+            except Exception:
+                pass
+
+    except Exception as e:
+        log.error(f"mirror_check_and_publish ch={ch_id}: {e}")
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        release_telethon_session(_sess_num)
+
+    return published
+
+
 # ─── PUBLIC STATS ─────────────────────────────────────────────────────────────
 
 async def get_public_stats() -> dict:

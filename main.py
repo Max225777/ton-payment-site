@@ -29,6 +29,7 @@ from services import (
     get_pending_posts,
     update_post_status,
     save_last_published,
+    get_last_published,
     sanitize_html_for_telegram,
     build_footer,
     load_media_for_post,
@@ -59,6 +60,26 @@ async def run_autopost(bot: Bot):
     for ch in channels:
         try:
             settings = ch.get("_settings", {})
+
+            # Mirror mode: handle separately (check every 10 min cycle from scheduler)
+            if settings.get("autopost_mode") == "mirror":
+                from services import mirror_check_and_publish
+                # Rate limit: only check every ~10 min (use last_published timestamp)
+                lp = await get_last_published(ch["id"])
+                if lp:
+                    try:
+                        from datetime import datetime, timezone
+                        lt = datetime.fromisoformat(lp["published_at"])
+                        elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - lt).total_seconds() / 60
+                        if elapsed < 10:
+                            log.debug(f"Autopost ch={ch['id']}: mirror check in {10 - elapsed:.0f}m")
+                            continue
+                    except Exception:
+                        pass
+                n = await mirror_check_and_publish(ch, bot)
+                if n:
+                    log.info(f"Autopost ch={ch['id']}: mirror published {n} post(s)")
+                continue
             confirm  = settings.get("autopost_confirm", False)
 
             # Smart parse: if queue is low (≤1) — trigger parse in background

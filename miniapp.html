@@ -531,6 +531,21 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   <div class="stit" style="margin-top:0" id="chs-stit-ap">Автопостинг</div>
   <div class="card" style="padding:4px 16px">
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ap-t">Автопостинг</div><div class="sr-s" id="chs-ap-d">Включить публикацию</div></div><label class="tg"><input type="checkbox" id="s-ap" onchange="onTgl('autopost_enabled',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
+  </div>
+  <div class="stit" id="chs-stit-mode"></div>
+  <div style="display:flex;gap:10px;padding:0 0 4px 0" id="mode-cards">
+    <div class="card mode-card" id="mc-queue" onclick="setMode('queue')" style="flex:1;padding:14px;cursor:pointer;border:2px solid transparent;border-radius:16px;transition:border-color .2s">
+      <div style="font-size:14px;font-weight:700;margin-bottom:6px" id="mc-queue-t"></div>
+      <div style="font-size:11px;color:var(--mu);line-height:1.45" id="mc-queue-d"></div>
+    </div>
+    <div class="card mode-card" id="mc-mirror" onclick="setMode('mirror')" style="flex:1;padding:14px;cursor:pointer;border:2px solid transparent;border-radius:16px;transition:border-color .2s">
+      <div style="font-size:14px;font-weight:700;margin-bottom:6px" id="mc-mirror-t"></div>
+      <div style="font-size:11px;color:var(--mu);line-height:1.45" id="mc-mirror-d"></div>
+      <div style="font-size:10px;color:var(--ac);margin-top:6px;font-weight:600" id="mc-mirror-int"></div>
+    </div>
+  </div>
+  <div id="queue-settings">
+  <div class="card" style="padding:4px 16px">
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ai-t">AI переработка</div><div class="sr-s" id="chs-ai-d">Перефразирование текстов</div></div><label class="tg"><input type="checkbox" id="s-ai" onchange="onTgl('_ai',this)"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-mo-t">Только с медиа</div><div class="sr-s" id="chs-mo-d">Собирать посты только с фото/видео</div></div><label class="tg"><input type="checkbox" id="s-mo" onchange="onTgl('media_only',this);if(this.checked)document.getElementById('s-to').checked=false,CUR_S.text_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-to-t">Только текст</div><div class="sr-s" id="chs-to-d">Собирать посты только с текстом (без медиа)</div></div><label class="tg"><input type="checkbox" id="s-to" onchange="onTgl('text_only',this);if(this.checked)document.getElementById('s-mo').checked=false,CUR_S.media_only=false"><div class="tg-t"></div><div class="tg-d"></div></label></div>
@@ -539,6 +554,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-ppd-t">Постов в день</div></div><select id="sp" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;width:70px;text-align:center" onchange="CUR_S.autopost_ppd=this.value"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="15">15</option><option value="18">18</option><option value="20">20</option><option value="24">24</option><option value="30">30</option><option value="36">36</option><option value="48">48</option></select></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-mage-t">Макс. возраст поста</div><div class="sr-s" id="chs-mage-d">Не парсить посты старше указанного срока</div></div><select id="smage" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;min-width:110px;text-align:center" onchange="CUR_S.autopost_max_age_h=this.value"><option value="6">6 ч</option><option value="12">12 ч</option><option value="24">24 ч</option><option value="48" selected>48 ч</option><option value="72">3 дн</option><option value="168">7 дн</option><option value="336">14 дн</option><option value="720">30 дн</option><option value="0">∞ (без огран.)</option></select></div>
     <div class="sr"><div class="sr-l"><div class="sr-t" id="chs-lang-t">Язык постов</div></div><select id="sl" style="background:var(--crd);color:var(--tx);border:1px solid var(--br);border-radius:10px;padding:6px 10px;font-size:14px;min-width:100px" onchange="CUR_S.channel_lang=this.value"><option value="off">OFF</option><option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="es">Español</option><option value="pt">Português</option><option value="it">Italiano</option><option value="pl">Polski</option><option value="tr">Türkçe</option><option value="ar">العربية</option><option value="zh">中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="hi">हिन्दी</option></select></div>
+  </div>
   </div>
   <div class="stit" id="chs-stit-filter">Фильтры контента</div>
   <div class="card" style="padding:4px 16px">
@@ -821,6 +837,12 @@ ru:{
   time_from:'Начало', time_to:'Конец', posts_per_day:'Постов в день', post_lang:'Язык постов',
   post_max_age:'Макс. возраст поста', post_max_age_desc:'Не парсить посты старше указанного срока',
   age_hours:'ч', age_days:'дн', age_unlimited:'∞ (без огран.)',
+  mode_title:'Режим работы',
+  mode_queue:'📋 Очередь постов',
+  mode_queue_desc:'Посты собираются в очередь. Вы контролируете каждый пост — одобряете или отклоняете. Гибкая настройка частоты и расписания.',
+  mode_mirror:'⚡ Копирование (зеркало)',
+  mode_mirror_desc:'Новые посты из источников публикуются автоматически с небольшой задержкой. Идеально для новостных и СМИ каналов.',
+  mode_mirror_interval:'Проверка новых постов каждые ~10 минут',
   queue_empty_hint:'Добавьте новые источники или увеличьте максимальный возраст постов в настройках автопостинга.',
   queue_exhausted:'📭 Посты из доступных источников закончились',
   queue_no_sources:'Добавьте источники, чтобы бот начал парсить посты.',
@@ -990,6 +1012,12 @@ uk:{
   time_from:'Початок', time_to:'Кінець', posts_per_day:'Постів на день', post_lang:'Мова постів',
   post_max_age:'Макс. вік поста', post_max_age_desc:'Не парсити пости старші за вказаний термін',
   age_hours:'год', age_days:'дн', age_unlimited:'∞ (без обмеж.)',
+  mode_title:'Режим роботи',
+  mode_queue:'📋 Черга постів',
+  mode_queue_desc:'Пости збираються в чергу. Ви контролюєте кожен пост — схвалюєте або відхиляєте. Гнучке налаштування частоти та розкладу.',
+  mode_mirror:'⚡ Копіювання (дзеркало)',
+  mode_mirror_desc:'Нові пости з джерел публікуються автоматично з невеликою затримкою. Ідеально для новинних та ЗМІ каналів.',
+  mode_mirror_interval:'Перевірка нових постів кожні ~10 хвилин',
   queue_empty_hint:'Додайте нові джерела або збільшіть максимальний вік постів у налаштуваннях автопостингу.',
   queue_exhausted:'пости з доступних джерел закінчились',
   queue_no_sources:'Додайте джерела, щоб бот почав парсити пости.',
@@ -1485,17 +1513,17 @@ function renderChannels(){
         </div>
         <div class="card" style="padding:4px 16px;margin-bottom:12px">
           <div class="sr tap" onclick="openCHS(${ch.id})">
-            <div class="sr-l"><div class="sr-t">${t('settings')}</div><div class="sr-s">${s.autopost_from||'06:00'}–${s.autopost_to||'22:00'} · ${s.autopost_ppd||6}/${LANG==='uk'?'д':'д'} · ${s.channel_lang||'off'}</div></div>
+            <div class="sr-l"><div class="sr-t">${t('settings')}</div><div class="sr-s">${s.autopost_mode==='mirror'?'⚡ '+(LANG==='uk'?'Дзеркало':'Зеркало'):(s.autopost_from||'06:00')+'–'+(s.autopost_to||'22:00')+' · '+(s.autopost_ppd||6)+'/'+(LANG==='uk'?'д':'д')} · ${s.channel_lang||'off'}</div></div>
             <span class="sr-v">→</span>
           </div>
           <div class="sr tap" onclick="openSrc(${ch.id})">
             <div class="sr-l"><div class="sr-t">${t('sources_patterns')}</div></div>
             <span class="sr-v">→</span>
           </div>
-          <div class="sr tap" onclick="openQueue(${ch.id})">
+          ${s.autopost_mode==='mirror'?'':`<div class="sr tap" onclick="openQueue(${ch.id})">
             <div class="sr-l"><div class="sr-t">${t('post_queue')}</div><div class="sr-s">${q} ${t('waiting')}</div></div>
             <span class="sr-v">${q} →</span>
-          </div>
+          </div>`}
           <div class="sr">
             <div class="sr-l">
               <div class="sr-t">${t('subscription')}</div>
@@ -1531,7 +1559,7 @@ function renderChannels(){
           <div style="font-size:11px;color:var(--mu);margin-top:1px;margin-bottom:4px">@${ch.username||''}</div>
           <div class="ch-mt">
             ${badgeHtml}
-            ${!isExpired&&s.autopost_enabled?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(45,212,160,.15);color:#2dd4a0;border:1px solid rgba(45,212,160,.3)">'+t('autopost')+'</span>':''}
+            ${!isExpired&&s.autopost_enabled?'<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;background:rgba(45,212,160,.15);color:#2dd4a0;border:1px solid rgba(45,212,160,.3)">'+(s.autopost_mode==='mirror'?'⚡ '+(LANG==='uk'?'Дзеркало':'Зеркало'):t('autopost'))+'</span>':''}
             ${!isExpired&&ch.subscription_total_hours>0?'<span>'+d+(LANG==='uk'?'д ':'д ')+ch.subscription_hours+(LANG==='uk'?'г':'ч')+'</span>':''}
             ${isExpired?'<span style="font-size:10px;color:var(--red)">'+t('need_pay')+'</span>':''}
           </div>
@@ -1607,6 +1635,8 @@ function openCHS(id){
   var slEl=document.getElementById('sl');
   slEl.value=s.channel_lang||'off';
   if(!slEl.value) slEl.value='off';
+  // Set mode
+  setMode(s.autopost_mode||'queue', true);
   // Text fields
   ['spbl','spbu','s-msubs','s-mprice','s-mcont','s-mlink','s-minfo'].forEach(function(el,i){
     var keys=['postbtn_label','postbtn_url','subscribers_count','price_per_post','contact_username','channel_link','monetization_info'];
@@ -1620,6 +1650,12 @@ function applyCHSLang(){
   document.getElementById('chs-stit-ap').textContent=t('ov_autopost');
   document.getElementById('chs-ap-t').textContent=t('autopost_enable');
   document.getElementById('chs-ap-d').textContent=t('autopost_enable_desc');
+  document.getElementById('chs-stit-mode').textContent=t('mode_title');
+  document.getElementById('mc-queue-t').textContent=t('mode_queue');
+  document.getElementById('mc-queue-d').textContent=t('mode_queue_desc');
+  document.getElementById('mc-mirror-t').textContent=t('mode_mirror');
+  document.getElementById('mc-mirror-d').textContent=t('mode_mirror_desc');
+  document.getElementById('mc-mirror-int').textContent=t('mode_mirror_interval');
   document.getElementById('chs-ai-t').textContent=t('ai_rephrase');
   document.getElementById('chs-ai-d').textContent=t('ai_rephrase_desc');
   document.getElementById('chs-mo-t').textContent=t('media_only');
@@ -1673,6 +1709,18 @@ function applyCHSLang(){
   document.getElementById('chs-link-d').textContent=t('mp_link_hint');
   document.getElementById('chs-minfo-t').textContent=t('mp_info_label');
   var _sb=document.getElementById('save-btn');if(_sb&&!_sb.disabled)_sb.textContent=t('save');
+}
+function setMode(mode, noSave){
+  CUR_S.autopost_mode=mode;
+  var qEl=document.getElementById('mc-queue'),mEl=document.getElementById('mc-mirror');
+  var qs=document.getElementById('queue-settings');
+  if(mode==='mirror'){
+    mEl.style.borderColor='var(--ac)';qEl.style.borderColor='transparent';
+    qs.style.display='none';
+  }else{
+    qEl.style.borderColor='var(--ac)';mEl.style.borderColor='transparent';
+    qs.style.display='';
+  }
 }
 function onTgl(k,cb){if(k==='_ai') CUR_S.ai_mode=cb.checked?'on':'off'; else CUR_S[k]=cb.checked}
 function prmpt(k,lbl,el){const v=prompt(lbl,CUR_S[k]||'');if(v===null)return;CUR_S[k]=v;document.getElementById(el).textContent=v||'—'}
