@@ -2986,6 +2986,11 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 if truly_new == 0:
                     log.info("  no new posts — end of history")
                 break
+            # Early exit: if newest 200 messages have no new ones, channel is idle.
+            # Avoids fetching 5000 msgs (and triggering 26-28s flood waits) every cycle.
+            if fetched_total >= 200 and truly_new == 0:
+                log.info("  no new posts in latest 200 — channel idle, stopping")
+                break
 
         messages = all_messages
         log.info(f"Parsing @{source['username']}: fetched {len(messages)} msgs total")
@@ -3279,6 +3284,10 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
             if hit_age_wall:
                 break
             if len(batch) < FETCH_BATCH:
+                break
+            # Early exit: if newest 200 messages have no new ones, channel is idle.
+            # Avoids fetching 5000 msgs (and triggering 26-28s flood waits) every cycle.
+            if fetched_total >= 200 and _total_new_before_age == 0:
                 break
 
         log.info(f"  _collect @{source['username']}: fetched={fetched_total} seen_ids={len(parsed_ids)} "
