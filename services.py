@@ -4814,9 +4814,12 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
 
             # Filter new messages only — limit to recent posts to avoid spam on first run
             _mirror_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=6)
+            _total_batch = len(batch)
+            _already_seen = 0
             new_msgs = []
             for m in batch:
                 if m.id in parsed_ids:
+                    _already_seen += 1
                     continue
                 if not (getattr(m, "text", None) or m.media):
                     continue
@@ -4831,11 +4834,10 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                 if text_only and _has_media:
                     continue
                 new_msgs.append(m)
+            log.info(f"  mirror @{source['username']}: batch={_total_batch} seen={_already_seen} new={len(new_msgs)}")
             if not new_msgs:
                 continue
             new_msgs = new_msgs[:max_mirror_posts]
-
-            log.info(f"  mirror @{source['username']}: {len(new_msgs)} new post(s)")
 
             # Get source signature & patterns
             source_signature = await _get_source_signature(source["id"])
