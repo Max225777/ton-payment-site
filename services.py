@@ -678,24 +678,46 @@ async def set_channel_status(channel_id: int, status: str, days: int | None = No
 
 
 async def check_expired_subscriptions():
-    """Auto-expire active/trial channels past their subscription_end date."""
+    """Auto-expire active/trial channels past their subscription_end date.
+    Also disables autopost in settings and notifies channel owner."""
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
     async with aiosqlite.connect(DB_PATH, timeout=10) as db:
         rows = await _fetchall(db,
-            """SELECT id, title, username, subscription_status, subscription_end, user_id
-               FROM channels
-               WHERE subscription_status IN ('active','trial')
-               AND subscription_end IS NOT NULL AND subscription_end <= ?""",
+            """SELECT c.id, c.title, c.username, c.subscription_status, c.subscription_end,
+                      c.user_id, c.settings, u.telegram_id as owner_tg_id
+               FROM channels c
+               LEFT JOIN users u ON u.id = c.user_id
+               WHERE c.subscription_status IN ('active','trial')
+               AND c.subscription_end IS NOT NULL AND c.subscription_end <= ?""",
             (now,))
         for ch in rows:
             await db.execute(
                 "UPDATE channels SET subscription_status='restricted' WHERE id=?",
                 (ch["id"],))
+            try:
+                _s = json.loads(ch.get("settings") or "{}")
+                _s["autopost_enabled"] = False
+                await db.execute(
+                    "UPDATE channels SET settings=? WHERE id=?",
+                    (json.dumps(_s), ch["id"]))
+            except Exception:
+                pass
             log.info(f"Subscription expired: ch={ch['id']} ({ch.get('title','?')}) → restricted")
+            try:
+                if _bot_instance and ch.get("owner_tg_id"):
+                    _was = ch.get("subscription_status", "?")
+                    _title = ch.get("title") or ch.get("username") or f"#{ch['id']}"
+                    await _bot_instance.send_message(
+                        int(ch["owner_tg_id"]),
+                        f"⏰ Підписка на канал <b>{_title}</b> закінчилась.\n"
+                        f"Автоведення зупинено. Продовжте підписку в Mini App.",
+                        parse_mode="HTML")
+            except Exception as _ne:
+                log.debug(f"notify expired ch={ch['id']}: {_ne}")
         if rows:
             await db.commit()
-    return rows  # list of expired channels for notification
+    return rows
 
 
 
@@ -1274,7 +1296,7 @@ def sanitize_html_for_telegram(text: str) -> str:
 
     from html.parser import HTMLParser
 
-    ALLOWED_WITH_A = ALLOWED | {"a", "tg-emoji"}
+    ALLOWED_WITH_A = ALLOWED | {"a"}
 
     class TGHTMLCleaner(HTMLParser):
         def __init__(self):
@@ -1292,13 +1314,6 @@ def sanitize_html_for_telegram(text: str) -> str:
                 if href:
                     self.result.append(f'<a href="{href}">')
                     self.stack.append("a")
-            elif tag == "tg-emoji":
-                attr_dict = dict(attrs)
-                eid = attr_dict.get("emoji-id", "")
-                if eid:
-                    self.result.append(f'<tg-emoji emoji-id="{eid}">')
-                    self.stack.append("tg-emoji")
-
         def handle_endtag(self, tag):
             if tag not in ALLOWED_WITH_A:
                 return  # ignore unsupported closing tags completely
@@ -2959,6 +2974,13 @@ async def _resolve_source_entity(client, source: dict):
 
 import re as _re_emoji
 _RE_EMOJI_TAG = _re_emoji.compile(r'<emoji\s+id="(\d+)">(.*?)</emoji>', _re_emoji.DOTALL)
+_RE_TG_EMOJI_TAG = _re_emoji.compile(r'<tg-emoji[^>]*>(.*?)</tg-emoji>', _re_emoji.DOTALL)
+
+def _strip_tg_emoji(text: str) -> str:
+    """Strip <tg-emoji> tags, keeping inner emoji character. Bot API often fails on these."""
+    if not text or '<tg-emoji' not in text:
+        return text
+    return _RE_TG_EMOJI_TAG.sub(r'\1', text)
 
 def _msg_to_html(m) -> str:
     """Convert Telethon message to HTML with premium custom emoji support."""
@@ -4745,10 +4767,14 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
     """Mirror mode: check sources for NEW posts, process & publish immediately.
     Returns number of posts published."""
     from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+    from datetime import datetime, timezone, timedelta
     settings = channel.get("_settings", {})
     ch_id = channel["id"]
     chat_id = channel["chat_id"]
     published = 0
+    media_only = settings.get("media_only", False)
+    text_only = settings.get("text_only", False)
+    max_mirror_posts = 5
 
     sources = await get_channel_sources(ch_id)
     active = [s for s in sources if s.get("is_active", 1)]
@@ -4786,12 +4812,28 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
             if not batch:
                 continue
 
-            # Filter new messages only
-            new_msgs = [m for m in batch if m.id not in parsed_ids and (
-                getattr(m, "text", None) or m.media
-            )]
+            # Filter new messages only — limit to recent posts to avoid spam on first run
+            _mirror_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=6)
+            new_msgs = []
+            for m in batch:
+                if m.id in parsed_ids:
+                    continue
+                if not (getattr(m, "text", None) or m.media):
+                    continue
+                if getattr(m, "date", None):
+                    _mdt = m.date.replace(tzinfo=None) if m.date.tzinfo else m.date
+                    if _mdt < _mirror_cutoff:
+                        continue
+                _has_media = bool(m.media)
+                _has_text = bool((getattr(m, "text", None) or "").strip())
+                if media_only and not _has_media:
+                    continue
+                if text_only and _has_media:
+                    continue
+                new_msgs.append(m)
             if not new_msgs:
                 continue
+            new_msgs = new_msgs[:max_mirror_posts]
 
             log.info(f"  mirror @{source['username']}: {len(new_msgs)} new post(s)")
 
@@ -4859,6 +4901,9 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                     # Post button
                     if settings.get("postbtn_enabled") and settings.get("postbtn_label") and settings.get("postbtn_url"):
                         text = (text or "") + '\n\n<b><a href="' + settings["postbtn_url"] + '">' + settings["postbtn_label"] + '</a></b>'
+
+                    # Strip tg-emoji tags — Bot API often can't parse them
+                    text = _strip_tg_emoji(text) if text else text
 
                     # Publish directly to channel
                     try:

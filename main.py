@@ -211,6 +211,10 @@ async def run_autopost(bot: Bot):
 
                 chat_id = ch["chat_id"]
                 try:
+                    # Strip tg-emoji tags — Bot API often can't parse them
+                    from services import _strip_tg_emoji
+                    text = _strip_tg_emoji(text) if text else text
+
                     # Guard: skip if no text and no usable media
                     has_media = bool(
                         (media_type == "album" and media_files_json) or
@@ -768,6 +772,8 @@ async def api_queue_action(request):
     chat_id = ch["chat_id"]
     try:
         import json as _jspub
+        from services import _strip_tg_emoji
+        text = _strip_tg_emoji(text) if text else text
         sent = None
         if mt == "album" and post_row.get("media_files_json"):
             from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
@@ -1473,7 +1479,7 @@ async def main():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(run_parse,           "interval", minutes=PARSE_INTERVAL_MINUTES, id="run_parse",        args=[bot])
     scheduler.add_job(run_autopost,        "interval", minutes=1,  id="run_autopost",   args=[bot])
-    scheduler.add_job(check_subscriptions, "interval", hours=1,    id="check_subscriptions")
+    scheduler.add_job(check_subscriptions, "interval", minutes=10, id="check_subscriptions")
     scheduler.add_job(run_expire,          "interval", minutes=10, id="run_expire")
     scheduler.add_job(run_autorenew,       "interval", minutes=30, id="run_autorenew")
     scheduler.add_job(run_midnight,        trigger=CronTrigger(hour=0, minute=0), id="run_midnight", args=[bot])
