@@ -1689,6 +1689,9 @@ async def detect_and_save_signature_for_new_source(source_id: int, username: str
             try: _m.media = None
             except: pass
     except Exception as _e:
+        _el = str(_e).lower()
+        if any(x in _el for x in ("frozen", "banned", "blocked", "deactivated")):
+            await _check_runtime_frozen(_e, _num)
         log.warning(f'detect_signature @{username}: {_e}')
         return ''
     finally:
@@ -2542,10 +2545,48 @@ def _mark_session_fail(num: str, err: str = ""):
     s["fail_count"] = s.get("fail_count", 0) + 1
 
 _notified_dead_sessions: set = set()  # avoid spam to admin
+_frozen_sessions: set = set()  # session nums that are frozen — skip in rotation
+
+
+async def _check_runtime_frozen(err, sess_num: str):
+    """Detect frozen/banned errors during runtime operations and mark session dead."""
+    err_lower = str(err).lower()
+    if not any(x in err_lower for x in ("frozen", "banned", "blocked", "deactivated")):
+        return False
+    _reason = "FROZEN" if "frozen" in err_lower else "BANNED"
+    log.warning(f"Session {sess_num}: runtime {_reason} detected — {err}")
+    _mark_session_fail(sess_num, f"{_reason.lower()}: {err}")
+    _frozen_sessions.add(sess_num)
+    if sess_num not in _notified_dead_sessions and _bot_instance and ADMIN_IDS:
+        _notified_dead_sessions.add(sess_num)
+        try:
+            await _bot_instance.send_message(
+                ADMIN_IDS[0],
+                f"🚫 <b>Telethon сесія #{sess_num} — {_reason}!</b>\n\n"
+                f"Виявлено під час роботи.\n"
+                f"Помилка: <code>{err}</code>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+    return True
 
 
 def get_session_status() -> dict:
-    result = {n: dict(s) for n, s in _SESSION_STATUS.items()}
+    result = {}
+    for n, s in _SESSION_STATUS.items():
+        d = dict(s)
+        if d.get("ok"):
+            d["status"] = "ok"
+        elif d.get("error"):
+            err_l = str(d["error"]).lower()
+            if any(x in err_l for x in ("frozen", "banned", "blocked", "deactivated")):
+                d["status"] = "dead"
+            else:
+                d["status"] = "error"
+        else:
+            d["status"] = "unknown"
+        result[n] = d
     return result
 
 
@@ -2659,17 +2700,19 @@ async def _get_telethon_client():
                 await c(_GUR([_IUS()]))
             except Exception as _te:
                 err_lower = str(_te).lower()
-                if any(x in err_lower for x in ("banned", "blocked", "deactivated", "account_banned", "user_deactivated")):
-                    log.warning(f"Session {num}: ACCOUNT BANNED — {_te}")
-                    _mark_session_fail(num, f"banned: {_te}")
+                if any(x in err_lower for x in ("banned", "blocked", "deactivated", "account_banned", "user_deactivated", "frozen")):
+                    _reason = "FROZEN" if "frozen" in err_lower else "BANNED"
+                    log.warning(f"Session {num}: ACCOUNT {_reason} — {_te}")
+                    _mark_session_fail(num, f"{_reason.lower()}: {_te}")
+                    _frozen_sessions.add(num)
                     await c.disconnect()
                     if num not in _notified_dead_sessions and _bot_instance and ADMIN_IDS:
                         _notified_dead_sessions.add(num)
                         try:
                             await _bot_instance.send_message(
                                 ADMIN_IDS[0],
-                                f"🚫 <b>Telethon сесія #{num} ЗАБЛОКОВАНА!</b>\n\n"
-                                f"Акаунт заблокований Telegram. Потрібен новий акаунт.\n"
+                                f"🚫 <b>Telethon сесія #{num} — {_reason}!</b>\n\n"
+                                f"Акаунт {'заморожений' if 'frozen' in err_lower else 'заблокований'} Telegram.\n"
                                 f"Помилка: <code>{_te}</code>",
                                 parse_mode="HTML"
                             )
@@ -2693,6 +2736,8 @@ async def _get_telethon_client():
 
     # Pass 1: try sessions that are NOT locked (non-blocking)
     for api_id, api_hash, sess_file, num in order:
+        if num in _frozen_sessions:
+            continue
         lock = _session_locks.get(num)
         if lock and not lock.locked():
             await lock.acquire()
@@ -2704,8 +2749,12 @@ async def _get_telethon_client():
             lock.release()
 
     # Pass 2: all sessions busy — wait for the first available
-    log.info(f"All {len(configured)} sessions busy — waiting for one to free up...")
-    for api_id, api_hash, sess_file, num in order:
+    _alive = [x for x in order if x[3] not in _frozen_sessions]
+    if not _alive:
+        log.error("All Telethon sessions frozen/banned — none available")
+        return None, None
+    log.info(f"All {len(_alive)} sessions busy — waiting for one to free up...")
+    for api_id, api_hash, sess_file, num in _alive:
         lock = _session_locks.get(num)
         if lock:
             await lock.acquire()  # blocking wait
@@ -2906,21 +2955,13 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
             entity = await _resolve_source_entity(client, source)
         except Exception as e:
             err_str = str(e).lower()
-            if "private" in err_str or "invite" in err_str or "join" in err_str or "forbidden" in err_str or "expired" in err_str:
+            if any(x in err_str for x in ("frozen", "banned", "blocked", "deactivated", "account_banned")):
+                await _check_runtime_frozen(e, _sess_num)
+                log.error(f"  Session {_sess_num} error during parse: {e}")
+            elif "private" in err_str or "invite" in err_str or "join" in err_str or "forbidden" in err_str or "expired" in err_str:
                 log.warning(f"Source @{source['username']}: {e}")
-            elif any(x in err_str for x in ("banned", "blocked", "deactivated", "account_banned", "flood")):
-                log.error(f"  Session error during parse: {e} — account may be banned/flooded")
-                if _bot_instance and ADMIN_IDS:
-                    try:
-                        await _bot_instance.send_message(
-                            ADMIN_IDS[0],
-                            f"⚠️ <b>Помилка парсингу!</b>\n\n"
-                            f"Джерело: @{source['username']}\n"
-                            f"Помилка: <code>{e}</code>\n\n"
-                            f"Можливо акаунт Telethon заблокований або є FloodWait.",
-                            parse_mode="HTML"
-                        )
-                    except Exception: pass
+            elif "flood" in err_str:
+                log.warning(f"  FloodWait during resolve @{source['username']}: {e}")
             else:
                 log.warning(f"  _collect @{source['username']}: get_entity failed: {e}")
             await client.disconnect()
@@ -2951,6 +2992,9 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                 batch = await client.get_messages(entity, limit=FETCH_BATCH, offset_id=offset_id)
             except Exception as _fe:
                 err_str = str(_fe).lower()
+                if any(x in err_str for x in ("frozen", "banned", "blocked", "deactivated")):
+                    await _check_runtime_frozen(_fe, _sess_num)
+                    break
                 if 'flood' in err_str or 'floodwait' in err_str:
                     import re as _re
                     wait_sec = int((_re.search(r'([0-9]+)', str(_fe)) or type('',(),{'group':lambda s,x:'60'})()).group(1))
@@ -3243,6 +3287,9 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
         try:
             entity = await _resolve_source_entity(client, source)
         except Exception as e:
+            _el = str(e).lower()
+            if any(x in _el for x in ("frozen", "banned", "blocked", "deactivated")):
+                await _check_runtime_frozen(e, session_num)
             log.warning(f"  _collect @{source['username']}: resolve failed: {e}")
             return []
 
@@ -3265,6 +3312,10 @@ async def _parse_source_collect(channel_id: int, source: dict, limit: int) -> li
             try:
                 batch = await client.get_messages(entity, limit=FETCH_BATCH, offset_id=offset_id)
             except Exception as _fe:
+                _fl = str(_fe).lower()
+                if any(x in _fl for x in ("frozen", "banned", "blocked", "deactivated")):
+                    await _check_runtime_frozen(_fe, session_num)
+                    break
                 log.warning(f"  _collect get_messages @{source['username']}: {_fe}")
                 break
             if not batch:
@@ -3446,11 +3497,21 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
         try:
             entity = await _resolve_source_entity(client, source)
         except Exception as e:
+            _el = str(e).lower()
+            if any(x in _el for x in ("frozen", "banned", "blocked", "deactivated")):
+                await _check_runtime_frozen(e, _sess_num)
             log.warning(f"  deep_collect @{source['username']}: {e}")
             return []
 
         log.info(f"  deep: fetching posts older than id={oldest_id} for @{source['username']}")
-        batch = await client.get_messages(entity, limit=30, offset_id=oldest_id)
+        try:
+            batch = await client.get_messages(entity, limit=30, offset_id=oldest_id)
+        except Exception as _fe:
+            _fl = str(_fe).lower()
+            if any(x in _fl for x in ("frozen", "banned", "blocked", "deactivated")):
+                await _check_runtime_frozen(_fe, _sess_num)
+            log.error(f"deep_collect @{source['username']}: {_fe}")
+            return []
         if not batch:
             return []
 
@@ -3569,6 +3630,9 @@ async def _parse_source_deep_collect(channel_id: int, source: dict, limit: int) 
             log.debug(f"  mark_messages_seen (deep): {_se}")
 
     except Exception as e:
+        _el = str(e).lower()
+        if any(x in _el for x in ("frozen", "banned", "blocked", "deactivated")):
+            await _check_runtime_frozen(e, _sess_num)
         log.error(f"deep_collect @{source['username']}: {e}")
     finally:
         try: await client.disconnect()
@@ -4583,6 +4647,10 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
             try:
                 entity = await _resolve_source_entity(client, source)
             except Exception as e:
+                _el = str(e).lower()
+                if any(x in _el for x in ("frozen", "banned", "blocked", "deactivated")):
+                    await _check_runtime_frozen(e, _sess_num)
+                    break
                 log.warning(f"  mirror @{source['username']}: resolve failed: {e}")
                 continue
 
@@ -4593,6 +4661,10 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
             try:
                 batch = await client.get_messages(entity, limit=20)
             except Exception as _fe:
+                _fl = str(_fe).lower()
+                if any(x in _fl for x in ("frozen", "banned", "blocked", "deactivated")):
+                    await _check_runtime_frozen(_fe, _sess_num)
+                    break
                 log.warning(f"  mirror get_messages @{source['username']}: {_fe}")
                 continue
             if not batch:

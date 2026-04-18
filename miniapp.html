@@ -2303,11 +2303,16 @@ async function loadAdminData(){
       else keys.forEach(function(k){
         var s=sess[k];
         var st=s.status||'unknown';
-        var col=st==='ok'?'var(--grn)':st==='error'?'var(--red)':'var(--mu)';
+        var col=st==='ok'?'var(--grn)':st==='dead'?'#ff4444':st==='error'?'var(--red)':'var(--mu)';
+        var lbl=st==='dead'?'FROZEN/BANNED':st;
         sh+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bor)">';
         sh+='<div style="width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0"></div>';
-        sh+='<div style="flex:1;font-size:13px;font-weight:600">Session '+_escHtml(k)+'</div>';
-        sh+='<div style="font-size:11px;color:'+col+';font-weight:700">'+_escHtml(st)+'</div>';
+        sh+='<div style="flex:1;min-width:0">';
+        sh+='<div style="font-size:13px;font-weight:600">Session '+_escHtml(k)+'</div>';
+        if(s.error){sh+='<div style="font-size:10px;color:var(--red);margin-top:2px;word-break:break-all">'+_escHtml(s.error).substring(0,120)+'</div>';}
+        if(s.last_ok){sh+='<div style="font-size:10px;color:var(--mu);margin-top:1px">OK: '+_escHtml(s.last_ok)+(s.last_fail?' · Fail: '+_escHtml(s.last_fail):'')+(s.fail_count?' · Fails: '+s.fail_count:'')+'</div>';}
+        sh+='</div>';
+        sh+='<div style="font-size:11px;color:'+col+';font-weight:700;white-space:nowrap">'+_escHtml(lbl)+'</div>';
         sh+='</div>';
       });
       document.getElementById('adm-sessions').innerHTML=sh;
