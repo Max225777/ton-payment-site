@@ -1542,9 +1542,9 @@ function renderChannels(){
             </label>
           </div>
         </div>
-        <div class="brow" style="margin-bottom:10px">
+        ${s.autopost_mode==='mirror'?'':`<div class="brow" style="margin-bottom:10px">
           <button class="btn bg" style="flex:1" onclick="parseNow(${ch.id},this)">${t('parse_posts')}</button>
-        </div>
+        </div>`}
         <button class="btn bd" style="width:100%" onclick="delCh(${ch.id},'@${ch.username||ch.title}')">${t('delete_channel')}</button>
       </div>`;
 
