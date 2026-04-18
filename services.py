@@ -2523,8 +2523,6 @@ def _init_session_status():
         _SESSION_STATUS[n] = {"ok": True, "error": None, "last_ok": None, "last_fail": None, "fail_count": 0}
     log.info(f"Sessions discovered: {found}")
 
-_init_session_status()
-
 def _mark_session_ok(num: str):
     from datetime import datetime
     if str(num) not in _SESSION_STATUS:
@@ -2550,19 +2548,52 @@ _frozen_sessions: set = set()  # session nums that are frozen — skip in rotati
 _FROZEN_FILE = "frozen_sessions.txt"
 
 def _load_frozen_sessions():
-    """Load frozen session nums from disk (survives restarts)."""
-    import os
-    if os.path.exists(_FROZEN_FILE):
-        try:
-            with open(_FROZEN_FILE) as f:
-                for line in f:
-                    s = line.strip()
-                    if s:
-                        _frozen_sessions.add(s)
-            if _frozen_sessions:
-                log.info(f"Loaded frozen sessions from disk: {_frozen_sessions}")
-        except Exception:
-            pass
+    """Load frozen session nums from disk, delete their .session files."""
+    import os, glob as _glob
+    if not os.path.exists(_FROZEN_FILE):
+        return
+    try:
+        with open(_FROZEN_FILE) as f:
+            for line in f:
+                s = line.strip()
+                if s:
+                    _frozen_sessions.add(s)
+    except Exception:
+        return
+    if not _frozen_sessions:
+        return
+    deleted = []
+    for num in list(_frozen_sessions):
+        path = f"{num}.session"
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                deleted.append(num)
+                log.info(f"Deleted frozen session file: {path}")
+            except Exception as _e:
+                log.warning(f"Could not delete {path}: {_e}")
+        # Also remove -journal file if exists
+        jpath = f"{num}.session-journal"
+        if os.path.exists(jpath):
+            try:
+                os.remove(jpath)
+            except Exception:
+                pass
+    if deleted:
+        log.info(f"Cleaned up {len(deleted)} frozen session file(s): {deleted}")
+    # Clear frozen file — the .session files are gone, no need to track them
+    _frozen_sessions.clear()
+    try:
+        os.remove(_FROZEN_FILE)
+    except Exception:
+        pass
+    # Discover remaining sessions and log
+    remaining = sorted([
+        os.path.splitext(os.path.basename(f))[0]
+        for f in _glob.glob("*.session")
+        if os.path.splitext(os.path.basename(f))[0].isdigit()
+    ])
+    log.info(f"Remaining active sessions after cleanup: {remaining}")
 
 def _save_frozen_sessions():
     try:
@@ -2571,7 +2602,8 @@ def _save_frozen_sessions():
     except Exception:
         pass
 
-_load_frozen_sessions()
+_load_frozen_sessions()  # deletes frozen .session files from disk
+_init_session_status()   # scans remaining .session files
 
 
 async def _check_runtime_frozen(err, sess_num: str):
@@ -2823,7 +2855,19 @@ async def _resolve_source_entity(client, source: dict):
             entity = await client.get_entity(int(saved_id))
             return entity
         except Exception as _e:
-            log.debug(f"  resolve src={source_id}: saved id {saved_id} failed: {_e}")
+            log.debug(f"  resolve src={source_id}: saved id {saved_id} via get_entity failed: {_e}")
+            # Fallback: try PeerChannel (works without cache)
+            try:
+                from telethon.tl.types import PeerChannel
+                from telethon.tl.functions.channels import GetChannelsRequest
+                from telethon.tl.types import InputChannel
+                _ch_id = int(saved_id)
+                _peer = InputChannel(_ch_id, 0)
+                result = await client(GetChannelsRequest([_peer]))
+                if result.chats:
+                    return result.chats[0]
+            except Exception as _e2:
+                log.debug(f"  resolve src={source_id}: PeerChannel {saved_id} failed: {_e2}")
 
     # 2. Try invite hash
     inv_hash = source.get('invite_hash')
@@ -2869,7 +2913,21 @@ async def _resolve_source_entity(client, source: dict):
     # 3. Try @username
     if username and not username.startswith('+'):
         un_clean = username.lstrip('@')
-        entity = await client.get_entity(f"@{un_clean}")
+        try:
+            entity = await client.get_entity(f"@{un_clean}")
+        except Exception as _ue:
+            _ue_str = str(_ue).lower()
+            if "no user has" in _ue_str or "username" in _ue_str:
+                # Session hasn't seen this channel — try to join it
+                try:
+                    from telethon.tl.functions.channels import JoinChannelRequest
+                    await client(JoinChannelRequest(f"@{un_clean}"))
+                    entity = await client.get_entity(f"@{un_clean}")
+                    log.info(f"  resolve: auto-joined @{un_clean}")
+                except Exception as _je:
+                    raise Exception(f'No user has "{un_clean}" as username (join attempt: {_je})')
+            else:
+                raise
         # Save channel ID for future use
         _eid = getattr(entity, 'id', None)
         if _eid and source_id:
