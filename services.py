@@ -4812,6 +4812,16 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
             if not batch:
                 continue
 
+            # First run for this source: seed all current messages as seen, don't publish old posts
+            if not parsed_ids:
+                try:
+                    seed_batch = [(m.id, getattr(m, 'grouped_id', None)) for m in batch if getattr(m, 'id', None)]
+                    await mark_messages_seen(ch_id, source["id"], seed_batch)
+                    log.info(f"  mirror @{source['username']}: new source — seeded {len(seed_batch)} msgs as seen, will publish only future posts")
+                except Exception:
+                    pass
+                continue
+
             # Filter new messages only — limit to recent posts to avoid spam on first run
             _mirror_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=6)
             _total_batch = len(batch)
