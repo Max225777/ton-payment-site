@@ -4222,7 +4222,7 @@ async def check_autorenew_subscriptions() -> list:
                             tg_id,
                             f"⚠️ <b>Автопродовження підписки</b>\n\nКанал: @{ch.get('username') or ch['id']}\n\n"
                             f"На балансі <b>${balance:.2f}</b>, потрібно <b>${slot_price:.2f}</b>.\n"
-                            f"Поповніть баланс у Mini App, щоб уникнути зупинки автопостингу.",
+                            f"Поповніть баланс у Mini App, щоб уникнути зупинки автоведення.",
                             parse_mode="HTML"
                         )
                     except Exception:
