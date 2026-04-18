@@ -3766,6 +3766,17 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
     per_source = max(1, math.ceil(QUEUE_MAX / n_sources))
 
     # Step 1: collect candidates from each source (no saving yet)
+    # Auto-detect signatures for sources where detection was never attempted (NULL)
+    # promo_signature=NULL means never tried, '' means tried but found nothing
+    for src in active:
+        if src.get("promo_signature") is None:
+            try:
+                _detected = await detect_and_save_signature_for_new_source(src["id"], src.get("username", ""))
+                if _detected:
+                    log.info(f"  auto-detect signature for @{src.get('username')}: {repr(_detected[:80])}")
+            except Exception as _de:
+                log.debug(f"  auto-detect signature @{src.get('username')} failed: {_de}")
+
     src_items: dict = {}  # source_id → list of ready tuples
     for src in active:
         try:
