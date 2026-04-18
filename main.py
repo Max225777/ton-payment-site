@@ -44,6 +44,19 @@ from services import (
     reset_confirm_skipped,
     check_autorenew_subscriptions,
 )
+# Strong refs to background tasks so they don't get GC'd mid-flight.
+# asyncio.create_task() returns a Task that's held only by a weak reference;
+# without a strong ref Python may collect it before completion.
+_BG_TASKS: set = set()
+
+def _spawn(coro):
+    """Create a background task and hold a strong ref so it isn't GC'd."""
+    import asyncio as _a
+    t = _a.create_task(coro)
+    _BG_TASKS.add(t)
+    t.add_done_callback(_BG_TASKS.discard)
+    return t
+
 from handlers import router
 
 log = logging.getLogger(__name__)
@@ -87,7 +100,7 @@ async def run_autopost(bot: Bot):
             q_count = await count_pending_posts(ch["id"])
             if q_count <= 1:
                 log.info(f"Autopost ch={ch['id']}: queue low ({q_count}), triggering background parse")
-                asyncio.create_task(parse_channel_sources(ch["id"]))
+                _spawn(parse_channel_sources(ch["id"]))
                 if q_count == 0:
                     continue  # nothing to post right now
 
@@ -251,7 +264,7 @@ async def run_autopost(bot: Bot):
                     remaining = await count_pending_posts(ch["id"])
                     if remaining <= 1:
                         log.info(f"Autopost ch={ch['id']}: queue low ({remaining}), triggering parse")
-                        asyncio.create_task(parse_channel_sources(ch["id"]))
+                        _spawn(parse_channel_sources(ch["id"]))
 
                 except Exception as e:
                     log.error(f"Autopost publish error ch {ch['id']}: {e}")
@@ -607,8 +620,7 @@ async def api_channel_add(request):
     trial_activated = False
     if not TRIAL_DISABLED:
         trial_activated = await activate_trial(ch_id)
-    import asyncio
-    asyncio.create_task(parse_channel_sources(ch_id))
+    _spawn(parse_channel_sources(ch_id))
     from services import get_channel
     ch = await get_channel(ch_id)
     return _j({"ok":True,"channel_id":ch_id,"title":title,"username":username,
@@ -629,7 +641,7 @@ async def api_channel_parse(request):
         await reprocess_all_pending_for_channel(ch_id)
         # Then parse new posts
         await parse_channel_sources(ch_id)
-    asyncio.create_task(_reprocess_then_parse())
+    _spawn(_reprocess_then_parse())
     return _j({"ok":True,"message":"Перечищення + парсинг запущено"})
 
 @_auth
@@ -729,7 +741,7 @@ async def api_queue_action(request):
             from services import count_pending_posts, parse_channel_sources
             remaining = await count_pending_posts(rp["channel_id"])
             if remaining <= 1:
-                asyncio.create_task(parse_channel_sources(rp["channel_id"]))
+                _spawn(parse_channel_sources(rp["channel_id"]))
         except Exception as _e:
             log.warning(f"skip action error post={post_id}: {_e}")
         return _j({"ok":True,"action":"skipped"})
@@ -789,7 +801,7 @@ async def api_queue_action(request):
         from services import count_pending_posts, parse_channel_sources
         remaining = await count_pending_posts(post_row["channel_id"])
         if remaining <= 1:
-            asyncio.create_task(parse_channel_sources(post_row["channel_id"]))
+            _spawn(parse_channel_sources(post_row["channel_id"]))
         return _j({"ok":True,"action":"published"})
     except Exception as e:
         log.error(f"publish error: {e}")
@@ -850,7 +862,7 @@ async def api_source_add(request):
             await parse_channel_sources(ch_id)
         except Exception as _e:
             log.warning(f"parse after source add failed ch={ch_id}: {_e}")
-    asyncio.create_task(_detect_then_parse())
+    _spawn(_detect_then_parse())
     return _j({"ok":True,"id":src_id,"join_status":join_status or "joined","detecting":True})
 
 @_auth
@@ -907,7 +919,7 @@ async def api_source_reset_sig(request):
             await detect_and_save_signature_for_new_source(src_id, src["username"])
         except Exception as _e:
             log.debug(f"reset_sig detect: {_e}")
-    asyncio.create_task(_redetect())
+    _spawn(_redetect())
     return _j({"ok":True})
 
 @_auth
@@ -939,7 +951,7 @@ async def api_pattern_add(request):
             await reprocess_pending_with_signature(src["channel_id"], src_id, sig or "")
         except Exception as _e:
             log.debug(f"pattern_add reprocess: {_e}")
-    _asyncio.create_task(_after_add())
+    _spawn(_after_add())
     return _j({"ok":True,"id":pat_id})
 
 @_auth

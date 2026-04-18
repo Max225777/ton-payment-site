@@ -1274,7 +1274,7 @@ def sanitize_html_for_telegram(text: str) -> str:
 
     from html.parser import HTMLParser
 
-    ALLOWED_WITH_A = ALLOWED | {"a", "tg-custom-emoji"}
+    ALLOWED_WITH_A = ALLOWED | {"a", "tg-emoji"}
 
     class TGHTMLCleaner(HTMLParser):
         def __init__(self):
@@ -1292,12 +1292,12 @@ def sanitize_html_for_telegram(text: str) -> str:
                 if href:
                     self.result.append(f'<a href="{href}">')
                     self.stack.append("a")
-            elif tag == "tg-custom-emoji":
+            elif tag == "tg-emoji":
                 attr_dict = dict(attrs)
                 eid = attr_dict.get("emoji-id", "")
                 if eid:
-                    self.result.append(f'<tg-custom-emoji emoji-id="{eid}">')
-                    self.stack.append("tg-custom-emoji")
+                    self.result.append(f'<tg-emoji emoji-id="{eid}">')
+                    self.stack.append("tg-emoji")
 
         def handle_endtag(self, tag):
             if tag not in ALLOWED_WITH_A:
@@ -2820,11 +2820,11 @@ def _msg_to_html(m) -> str:
     except Exception:
         raw = (getattr(m, "text", None) or "").strip()
         return raw
-    # Convert Telethon <emoji id="X">Y</emoji> → Bot API <tg-custom-emoji emoji-id="X">Y</tg-custom-emoji>
+    # Convert Telethon <emoji id="X">Y</emoji> → Bot API <tg-emoji emoji-id="X">Y</tg-emoji>
     if '<emoji ' in raw:
-        raw = _RE_EMOJI_TAG.sub(r'<tg-custom-emoji emoji-id="\1">\2</tg-custom-emoji>', raw)
+        raw = _RE_EMOJI_TAG.sub(r'<tg-emoji emoji-id="\1">\2</tg-emoji>', raw)
     # Fallback: if Telethon didn't convert them, handle entities manually
-    if not '<tg-custom-emoji' in raw:
+    if not '<tg-emoji' in raw:
         try:
             from telethon.tl.types import MessageEntityCustomEmoji
             entities = getattr(m, "entities", None) or []
@@ -2834,7 +2834,7 @@ def _msg_to_html(m) -> str:
                 # Apply in reverse order to preserve offsets
                 for ce in sorted(customs, key=lambda e: e.offset, reverse=True):
                     emoji_char = text[ce.offset:ce.offset + ce.length]
-                    tag = f'<tg-custom-emoji emoji-id="{ce.document_id}">{emoji_char}</tg-custom-emoji>'
+                    tag = f'<tg-emoji emoji-id="{ce.document_id}">{emoji_char}</tg-emoji>'
                     # Find the emoji_char in raw HTML and wrap it
                     # Simple replacement — first occurrence from the rough position
                     idx = raw.find(emoji_char)
