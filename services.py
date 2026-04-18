@@ -69,7 +69,7 @@ PARSE_INTERVAL_MINUTES = int(os.getenv("PARSE_INTERVAL_MINUTES", "30"))
 PARSE_POSTS_LIMIT      = int(os.getenv("PARSE_POSTS_LIMIT", "50"))
 QUEUE_MAX              = int(os.getenv("QUEUE_MAX", "5"))    # Max pending posts per channel
 DOWNLOAD_WORKERS       = int(os.getenv("DOWNLOAD_WORKERS", "4"))  # parallel media downloads
-MAX_FILE_MB            = int(os.getenv("MAX_FILE_MB", "50"))   # skip files larger than this
+MAX_FILE_MB            = int(os.getenv("MAX_FILE_MB", "20"))   # skip files larger than this (prevent OOM)
 
 GLOBAL_BLACKLIST     = os.getenv("GLOBAL_BLACKLIST", "")
 AD_TEXT              = os.getenv("AD_TEXT", "")
@@ -1472,7 +1472,12 @@ async def _download_and_get_file_id_inner(client, msg, media_type: str) -> Optio
         if not local_path or not os.path.exists(local_path):
             log.warning(f"  download failed for msg {msg.id}")
             return None
-        log.info(f"  downloaded {os.path.basename(local_path)} ({os.path.getsize(local_path)//1024}KB)")
+        _fsize = os.path.getsize(local_path)
+        log.info(f"  downloaded {os.path.basename(local_path)} ({_fsize//1024}KB)")
+        if _fsize > MAX_FILE_MB * 1024 * 1024:
+            log.info(f"  skip: downloaded file too large ({_fsize//1024//1024}MB > {MAX_FILE_MB}MB)")
+            os.remove(local_path)
+            return None
 
         if not _bot_instance or not ADMIN_IDS:
             log.warning("  upload skipped: no bot instance or ADMIN_IDS")
@@ -2158,7 +2163,8 @@ def _is_ai_refusal(text: str) -> bool:
 
 async def process_text_ai(text: str, mode: str, settings: dict,
                           source_signature: str = "",
-                          extra_patterns: list = None) -> str:
+                          extra_patterns: list = None,
+                          has_media: bool = False) -> str:
     """
     Step 1: Sanitize HTML + cut signature + manual patterns + remove promo links
     Step 2: If < 15 chars → skip
@@ -2196,10 +2202,13 @@ async def process_text_ai(text: str, mode: str, settings: dict,
     log.info(f"  [S1] after clean+sig END: {repr(_cl_plain[-150:])}")
     log.info(f"  [S1] sig removed: {source_signature[:30] not in _cl_plain if source_signature else True}")
 
-    # Step 2: skip if nothing left
+    # Step 2: skip if nothing left (but keep posts with media — short caption is OK)
     if len(_plain(cleaned)) < 15:
-        log.info("  [S2] empty after cleaning → skip")
-        return ""
+        if not has_media:
+            log.info("  [S2] empty after cleaning → skip")
+            return ""
+        log.info("  [S2] short text but has media → keep")
+        return cleaned if cleaned.strip() else ""
 
     # Step 3: hard pattern check
     body_for_check = _strip_footer_lines(cleaned)
@@ -2351,7 +2360,8 @@ async def reprocess_all_pending_for_channel(channel_id: int):
                 continue
             async with aiosqlite.connect(DB_PATH, timeout=30) as db:
                 rows = await _fetchall(db,
-                    """SELECT pp.id, pp.raw_post_id, rp.text as raw_text
+                    """SELECT pp.id, pp.raw_post_id, rp.text as raw_text,
+                              rp.media_type, rp.media_file_id
                        FROM processed_posts pp
                        JOIN raw_posts rp ON rp.id=pp.raw_post_id
                        WHERE rp.source_id=? AND rp.channel_id=?
@@ -2362,7 +2372,8 @@ async def reprocess_all_pending_for_channel(channel_id: int):
                 try:
                     await _ai_process_post(row["raw_post_id"], row.get("raw_text") or "",
                                            settings, source_signature=sig,
-                                           extra_patterns=extra)
+                                           extra_patterns=extra,
+                                           has_media=bool(row.get("media_type") or row.get("media_file_id")))
                 except Exception as _e:
                     log.debug(f"reprocess_all post {row.get('raw_post_id')}: {_e}")
         log.info(f"reprocess_all_pending_for_channel {channel_id}: done")
@@ -2411,15 +2422,18 @@ async def reprocess_pending_with_signature(channel_id: int, source_id: int, sign
 
 async def _ai_process_post(raw_id: int, text: str, settings: dict,
                            source_signature: str = "",
-                           extra_patterns: list = None):
+                           extra_patterns: list = None,
+                           has_media: bool = False):
     """Classify + clean. AD → mark skipped. OK → save cleaned text.
     text = raw original HTML (for classify context)
     source_signature = already-known promo suffix to cut
     extra_patterns   = list of manual user-added patterns to also remove
+    has_media = True if post has photo/video — don't skip short text
     """
     result = await process_text_ai(text, "on", settings,
                                    source_signature=source_signature,
-                                   extra_patterns=extra_patterns)
+                                   extra_patterns=extra_patterns,
+                                   has_media=has_media)
     async with aiosqlite.connect(DB_PATH, timeout=30) as db:
         if not result:
             # Text was classified as ad or fully removed — skip the post
@@ -3331,7 +3345,8 @@ async def _parse_source(channel_id: int, source: dict, max_add: int = QUEUE_MAX)
                     try:
                         await _ai_process_post(raw_id, text, settings,
                                                source_signature=source_signature,
-                                               extra_patterns=source_extra_patterns)
+                                               extra_patterns=source_extra_patterns,
+                                               has_media=bool(media_type))
                     except Exception as _ae:
                         import logging as _l; _l.getLogger(__name__).warning(f"AI err: {_ae}")
                 added += 1
@@ -3835,7 +3850,8 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
             try:
                 await _ai_process_post(raw_id, text, settings,
                                        source_signature=_sig,
-                                       extra_patterns=_extra)
+                                       extra_patterns=_extra,
+                                       has_media=bool(media_type))
             except Exception as _ae:
                 log.warning(f"AI err: {_ae}")
             # Only count post if it ended up as pending (not skipped as AD)
@@ -3894,7 +3910,8 @@ async def _parse_channel_sources_inner(channel_id: int) -> int:
                 try:
                     await _ai_process_post(raw_id, text, settings,
                                            source_signature=_sig,
-                                           extra_patterns=_extra)
+                                           extra_patterns=_extra,
+                                           has_media=bool(media_type))
                 except Exception as _ae:
                     log.warning(f"AI err deep: {_ae}")
                 total += 1
