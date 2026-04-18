@@ -2312,6 +2312,7 @@ async function loadAdminData(){
         if(s.error){sh+='<div style="font-size:10px;color:var(--red);margin-top:2px;word-break:break-all">'+_escHtml(s.error).substring(0,120)+'</div>';}
         if(s.last_ok){sh+='<div style="font-size:10px;color:var(--mu);margin-top:1px">OK: '+_escHtml(s.last_ok)+(s.last_fail?' · Fail: '+_escHtml(s.last_fail):'')+(s.fail_count?' · Fails: '+s.fail_count:'')+'</div>';}
         sh+='</div>';
+        if(st==='dead'){sh+='<button onclick="unfreezeSession(\''+k+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--red);border-radius:6px;background:none;color:var(--red);cursor:pointer;white-space:nowrap">Unfreeze</button>';}
         sh+='<div style="font-size:11px;color:'+col+';font-weight:700;white-space:nowrap">'+_escHtml(lbl)+'</div>';
         sh+='</div>';
       });
@@ -2360,6 +2361,9 @@ function renderAdmUsers(users){
       +'<div style="font-size:11px;color:var(--mu)">ID: '+u.telegram_id+(chCount?' · '+chCount+' '+t('user_channels'):'')+'</div></div>'
       +'<div style="font-size:14px;font-weight:700;color:var(--grn)">$'+(u.balance||0).toFixed(2)+'</div></div>';
   }).join('')||'<div style="color:var(--mu);padding:13px 0;font-size:13px">—</div>';
+}
+async function unfreezeSession(num){
+  try{await api('POST','/api/admin/session/unfreeze',{session:num});loadAdminData();}catch(e){alert('Error: '+e);}
 }
 function admSearch(q){
   clearTimeout(_admSearchTimer);

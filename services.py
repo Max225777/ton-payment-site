@@ -2547,6 +2547,32 @@ def _mark_session_fail(num: str, err: str = ""):
 _notified_dead_sessions: set = set()  # avoid spam to admin
 _frozen_sessions: set = set()  # session nums that are frozen — skip in rotation
 
+_FROZEN_FILE = "frozen_sessions.txt"
+
+def _load_frozen_sessions():
+    """Load frozen session nums from disk (survives restarts)."""
+    import os
+    if os.path.exists(_FROZEN_FILE):
+        try:
+            with open(_FROZEN_FILE) as f:
+                for line in f:
+                    s = line.strip()
+                    if s:
+                        _frozen_sessions.add(s)
+            if _frozen_sessions:
+                log.info(f"Loaded frozen sessions from disk: {_frozen_sessions}")
+        except Exception:
+            pass
+
+def _save_frozen_sessions():
+    try:
+        with open(_FROZEN_FILE, "w") as f:
+            f.write("\n".join(sorted(_frozen_sessions)))
+    except Exception:
+        pass
+
+_load_frozen_sessions()
+
 
 async def _check_runtime_frozen(err, sess_num: str):
     """Detect frozen/banned errors during runtime operations and mark session dead."""
@@ -2557,6 +2583,7 @@ async def _check_runtime_frozen(err, sess_num: str):
     log.warning(f"Session {sess_num}: runtime {_reason} detected — {err}")
     _mark_session_fail(sess_num, f"{_reason.lower()}: {err}")
     _frozen_sessions.add(sess_num)
+    _save_frozen_sessions()
     if sess_num not in _notified_dead_sessions and _bot_instance and ADMIN_IDS:
         _notified_dead_sessions.add(sess_num)
         try:
@@ -2664,6 +2691,8 @@ async def _get_telethon_client():
 
     async def _try(api_id, api_hash, sess_file, num):
         """Connect using existing .session file only."""
+        if num in _frozen_sessions:
+            return None
         import os
         sess_path = sess_file if sess_file.endswith(".session") else sess_file + ".session"
         if not os.path.exists(sess_path):
@@ -2705,6 +2734,7 @@ async def _get_telethon_client():
                     log.warning(f"Session {num}: ACCOUNT {_reason} — {_te}")
                     _mark_session_fail(num, f"{_reason.lower()}: {_te}")
                     _frozen_sessions.add(num)
+                    _save_frozen_sessions()
                     await c.disconnect()
                     if num not in _notified_dead_sessions and _bot_instance and ADMIN_IDS:
                         _notified_dead_sessions.add(num)

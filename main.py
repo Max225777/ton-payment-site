@@ -1298,6 +1298,19 @@ async def api_admin_sessions(request):
     return _j(get_session_status())
 
 @_auth
+async def api_admin_session_unfreeze(request):
+    """Admin: unfreeze a session so it's retried."""
+    from services import ADMIN_IDS, _frozen_sessions, _save_frozen_sessions, _mark_session_ok
+    if request["tg_user"]["id"] not in ADMIN_IDS:
+        return _web.json_response({"error":"forbidden"}, status=403)
+    body = await request.json()
+    num = str(body.get("session", ""))
+    _frozen_sessions.discard(num)
+    _save_frozen_sessions()
+    _mark_session_ok(num)
+    return _j({"ok": True, "session": num})
+
+@_auth
 async def api_admin_user_block(request):
     """Admin: block/unblock user."""
     from services import ADMIN_IDS, set_user_blocked
@@ -1432,6 +1445,7 @@ async def start_webapp():
     app.router.add_get   ("/api/check_subscriptions",       api_check_subscriptions)
     app.router.add_get   ("/api/admin/channels",            api_admin_all_channels)
     app.router.add_get   ("/api/admin/sessions",            api_admin_sessions)
+    app.router.add_post  ("/api/admin/session/unfreeze",    api_admin_session_unfreeze)
     app.router.add_post  ("/api/admin/user/block",          api_admin_user_block)
     app.router.add_get   ("/api/marketplace",               api_marketplace)
     app.router.add_get   ("/api/marketplace/photo/{id}",    api_marketplace_photo)
