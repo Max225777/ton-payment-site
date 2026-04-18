@@ -17,7 +17,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
-  height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+  min-height:100dvh;overflow-x:hidden}
 
 /* ── TOP BAR ── */
 .topbar{
@@ -48,8 +48,7 @@ body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--tx);
   border-radius:20px;padding:5px 11px;white-space:nowrap}
 
 /* ── SCREENS ── */
-.scr{display:none;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  height:100dvh;
+.scr{display:none;
   padding-top:calc(var(--top) + var(--st) + 16px);
   padding-left:var(--pad);padding-right:var(--pad);
   padding-bottom:calc(var(--nav)+80px+var(--sb))}
@@ -2422,6 +2421,7 @@ function goTo(id,title){
   document.querySelectorAll('.scr').forEach(function(s){s.classList.remove('on');});
   document.getElementById(id).classList.add('on');
   document.getElementById('tb-title').textContent=title||TITLES[id]||'';
+  try{window.scrollTo(0,0);}catch(e){}
   if(id==='s-fin')loadFin();
   if(id==='s-ref')loadRef();
   if(id==='s-set')loadSetPage();
