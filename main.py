@@ -211,10 +211,6 @@ async def run_autopost(bot: Bot):
 
                 chat_id = ch["chat_id"]
                 try:
-                    # Strip tg-emoji tags — Bot API often can't parse them
-                    from services import _strip_tg_emoji
-                    text = _strip_tg_emoji(text) if text else text
-
                     # Guard: skip if no text and no usable media
                     has_media = bool(
                         (media_type == "album" and media_files_json) or
@@ -225,23 +221,35 @@ async def run_autopost(bot: Bot):
                         await update_post_status(post["id"], "skipped")
                         continue
 
+                    sent = None
                     if media_type == "album" and media_files_json:
                         from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
                         files = _json.loads(media_files_json)
-                        media_group = []
-                        for i, f in enumerate(files):
-                            caption = _safe_caption(text) if i == 0 else None
-                            pm      = ParseMode.HTML if i == 0 else None
-                            ftype   = f.get("type", "photo")
-                            fid     = f["file_id"]
-                            if ftype == "photo":
-                                media_group.append(InputMediaPhoto(media=fid, caption=caption, parse_mode=pm))
-                            elif ftype == "video":
-                                media_group.append(InputMediaVideo(media=fid, caption=caption, parse_mode=pm))
+                        def _build_album(cap, pm):
+                            mg = []
+                            for i, f in enumerate(files):
+                                c = _safe_caption(cap) if i == 0 else None
+                                p = pm if i == 0 else None
+                                ftype = f.get("type", "photo")
+                                fid = f["file_id"]
+                                if ftype == "photo":
+                                    mg.append(InputMediaPhoto(media=fid, caption=c, parse_mode=p))
+                                elif ftype == "video":
+                                    mg.append(InputMediaVideo(media=fid, caption=c, parse_mode=p))
+                                else:
+                                    mg.append(InputMediaDocument(media=fid, caption=c, parse_mode=p))
+                            return mg
+                        try:
+                            sent_list = await bot.send_media_group(chat_id, _build_album(text, ParseMode.HTML))
+                            sent = sent_list[0]
+                        except Exception as _ae:
+                            if "can't parse entities" in str(_ae).lower():
+                                import re as _re
+                                plain = _re.sub(r'<[^>]+>', '', text or '').strip()
+                                sent_list = await bot.send_media_group(chat_id, _build_album(plain, None))
+                                sent = sent_list[0]
                             else:
-                                media_group.append(InputMediaDocument(media=fid, caption=caption, parse_mode=pm))
-                        sent_list = await bot.send_media_group(chat_id, media_group)
-                        sent = sent_list[0]
+                                raise
                     elif media_type == "photo" and media_file_id:
                         sent = await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(text), parse_mode=ParseMode.HTML)
                     elif media_type == "video" and media_file_id:
@@ -264,14 +272,33 @@ async def run_autopost(bot: Bot):
                     await save_last_published(ch["id"], sent.message_id)
                     await cleanup_published_media(post["id"])
                     log.info(f"Autopost: published post {post['id']} to ch {ch['id']}")
-                    # Smart parse: if queue is now low — refill in background
                     remaining = await count_pending_posts(ch["id"])
                     if remaining <= 1:
                         log.info(f"Autopost ch={ch['id']}: queue low ({remaining}), triggering parse")
                         _spawn(parse_channel_sources(ch["id"]))
 
                 except Exception as e:
-                    log.error(f"Autopost publish error ch {ch['id']}: {e}")
+                    if "can't parse entities" in str(e).lower() and has_media:
+                        try:
+                            import re as _re
+                            plain = _re.sub(r'<[^>]+>', '', text or '').strip()
+                            if media_type == "photo" and media_file_id:
+                                sent = await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(plain))
+                            elif media_type == "video" and media_file_id:
+                                sent = await bot.send_video(chat_id, media_file_id, caption=_safe_caption(plain))
+                            elif media_type == "animation" and media_file_id:
+                                sent = await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(plain))
+                            elif media_type == "document" and media_file_id:
+                                sent = await bot.send_document(chat_id, media_file_id, caption=_safe_caption(plain))
+                            if sent:
+                                await update_post_status(post["id"], "published", only_if_pending=True)
+                                await save_last_published(ch["id"], sent.message_id)
+                                await cleanup_published_media(post["id"])
+                                log.info(f"Autopost: published post {post['id']} (plain fallback)")
+                        except Exception as _fe:
+                            log.error(f"Autopost fallback error ch {ch['id']}: {_fe}")
+                    else:
+                        log.error(f"Autopost publish error ch {ch['id']}: {e}")
 
         except Exception as e:
             log.error(f"Autopost error ch {ch['id']}: {e}")
@@ -772,23 +799,33 @@ async def api_queue_action(request):
     chat_id = ch["chat_id"]
     try:
         import json as _jspub
-        from services import _strip_tg_emoji
-        text = _strip_tg_emoji(text) if text else text
+        import re as _re_pub
         sent = None
         if mt == "album" and post_row.get("media_files_json"):
             from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
             files = _jspub.loads(post_row["media_files_json"])
-            media = []
-            for i,f in enumerate(files[:10]):
-                caption = _safe_caption(text) if i==0 else None
-                if f["type"]=="photo":
-                    media.append(InputMediaPhoto(media=f["file_id"], caption=caption, parse_mode="HTML"))
-                elif f["type"]=="document":
-                    media.append(InputMediaDocument(media=f["file_id"], caption=caption, parse_mode="HTML"))
+            def _mk_album(cap, pm):
+                mg = []
+                for i, f in enumerate(files[:10]):
+                    c = _safe_caption(cap) if i == 0 else None
+                    p = pm if i == 0 else None
+                    if f["type"] == "photo":
+                        mg.append(InputMediaPhoto(media=f["file_id"], caption=c, parse_mode=p))
+                    elif f["type"] == "document":
+                        mg.append(InputMediaDocument(media=f["file_id"], caption=c, parse_mode=p))
+                    else:
+                        mg.append(InputMediaVideo(media=f["file_id"], caption=c, parse_mode=p))
+                return mg
+            try:
+                sent_list = await bot.send_media_group(chat_id, _mk_album(text, "HTML"))
+                sent = sent_list[0] if sent_list else None
+            except Exception as _ae:
+                if "can't parse entities" in str(_ae).lower():
+                    plain = _re_pub.sub(r'<[^>]+>', '', text or '').strip()
+                    sent_list = await bot.send_media_group(chat_id, _mk_album(plain, None))
+                    sent = sent_list[0] if sent_list else None
                 else:
-                    media.append(InputMediaVideo(media=f["file_id"], caption=caption, parse_mode="HTML"))
-            sent_list = await bot.send_media_group(chat_id, media)
-            sent = sent_list[0] if sent_list else None
+                    raise
         elif mt == "photo" and mf:
             sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(text), parse_mode="HTML")
         elif mt in ("video","animation") and mf:
@@ -803,13 +840,31 @@ async def api_queue_action(request):
         await update_post_status(post_id, "published")
         if sent:
             await save_last_published(post_row["channel_id"], sent.message_id)
-        # Smart parse: if queue is now low — trigger parse in background
         from services import count_pending_posts, parse_channel_sources
         remaining = await count_pending_posts(post_row["channel_id"])
         if remaining <= 1:
             _spawn(parse_channel_sources(post_row["channel_id"]))
         return _j({"ok":True,"action":"published"})
     except Exception as e:
+        if "can't parse entities" in str(e).lower():
+            try:
+                import re as _re_pub
+                plain = _re_pub.sub(r'<[^>]+>', '', text or '').strip()
+                if mt == "photo" and mf:
+                    sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(plain))
+                elif mt in ("video","animation") and mf:
+                    sent = await bot.send_video(chat_id, mf, caption=_safe_caption(plain))
+                elif mt == "document" and mf:
+                    sent = await bot.send_document(chat_id, mf, caption=_safe_caption(plain))
+                elif plain:
+                    sent = await bot.send_message(chat_id, _safe_text(plain))
+                if sent:
+                    await update_post_status(post_id, "published")
+                    await save_last_published(post_row["channel_id"], sent.message_id)
+                    return _j({"ok":True,"action":"published"})
+            except Exception as _fe:
+                log.error(f"publish fallback error: {_fe}")
+                return _web.json_response({"error":str(_fe)}, status=500)
         log.error(f"publish error: {e}")
         return _web.json_response({"error":str(e)}, status=500)
 

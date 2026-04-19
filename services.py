@@ -2195,6 +2195,9 @@ async def process_text_ai(text: str, mode: str, settings: dict,
     if not text:
         return text
 
+    # Extract premium emoji before processing — will be restored at the end
+    text, _premium_emoji = _extract_premium_emoji(text)
+
     import re as _re_chk
     sanitized = sanitize_html_for_telegram(text)
     _plain = lambda t: _re_chk.sub(r'<[^>]+>', '', t or '').strip()
@@ -2218,12 +2221,13 @@ async def process_text_ai(text: str, mode: str, settings: dict,
     log.info(f"  [S1] sig removed: {source_signature[:30] not in _cl_plain if source_signature else True}")
 
     # Step 2: skip if nothing left (but keep posts with media — short caption is OK)
-    if len(_plain(cleaned)) < 15:
+    if len(_plain(cleaned)) < 3:
         if not has_media:
             log.info("  [S2] empty after cleaning → skip")
             return ""
         log.info("  [S2] short text but has media → keep")
-        return cleaned if cleaned.strip() else ""
+        _r = cleaned if cleaned.strip() else ""
+        return _restore_premium_emoji(_r, _premium_emoji) if _r else _r
 
     # Step 3: hard pattern check
     body_for_check = _strip_footer_lines(cleaned)
@@ -2333,7 +2337,7 @@ async def process_text_ai(text: str, mode: str, settings: dict,
                     for _pat in extra_patterns:
                         result = _cut_source_signature(result, _pat)
                     log.info(f"  [S6] translated OK: {repr(_plain(result)[:120])}")
-                    return result
+                    return _restore_premium_emoji(result, _premium_emoji)
                 log.warning("  [S6] translate returned empty, using untranslated")
             elif ai_mode == "off" and channel_lang and channel_lang != "off":
                 log.info("  [S6] translation skipped (ai_mode=off)")
@@ -2341,7 +2345,7 @@ async def process_text_ai(text: str, mode: str, settings: dict,
                 log.info("  [S6] no translation (lang=off)")
 
             log.info(f"  [DONE] final: {repr(_plain(cleaned)[:120])}")
-            return cleaned
+            return _restore_premium_emoji(cleaned, _premium_emoji)
 
         except Exception as e:
             log.warning(f"  AI error ({AI_PROVIDER}): {e} — fallback to clean only")
@@ -2349,7 +2353,7 @@ async def process_text_ai(text: str, mode: str, settings: dict,
             fb = _cut_source_signature(fb, source_signature)
             for _pat in extra_patterns:
                 fb = _cut_source_signature(fb, _pat)
-            return fb
+            return _restore_premium_emoji(fb, _premium_emoji)
 
 
 async def _get_post_status(raw_post_id: int) -> str:
@@ -2975,12 +2979,50 @@ async def _resolve_source_entity(client, source: dict):
 import re as _re_emoji
 _RE_EMOJI_TAG = _re_emoji.compile(r'<emoji\s+id="(\d+)">(.*?)</emoji>', _re_emoji.DOTALL)
 _RE_TG_EMOJI_TAG = _re_emoji.compile(r'<tg-emoji[^>]*>(.*?)</tg-emoji>', _re_emoji.DOTALL)
+_RE_TG_EMOJI_FULL = _re_emoji.compile(r'<tg-emoji\s+emoji-id="(\d+)">(.*?)</tg-emoji>', _re_emoji.DOTALL)
 
 def _strip_tg_emoji(text: str) -> str:
-    """Strip <tg-emoji> tags, keeping inner emoji character. Bot API often fails on these."""
+    """Strip <tg-emoji> tags, keeping inner emoji character."""
     if not text or '<tg-emoji' not in text:
         return text
     return _RE_TG_EMOJI_TAG.sub(r'\1', text)
+
+def _extract_premium_emoji(text: str):
+    """Extract premium emoji from text, replace with plain emoji chars.
+    Returns (cleaned_text, emoji_map) where emoji_map = [(emoji_char, document_id), ...]"""
+    if not text or '<tg-emoji' not in text:
+        return text, []
+    emoji_map = []
+    def _repl(m):
+        emoji_map.append((m.group(2), m.group(1)))
+        return m.group(2)
+    cleaned = _RE_TG_EMOJI_FULL.sub(_repl, text)
+    return cleaned, emoji_map
+
+def _restore_premium_emoji(text: str, emoji_map: list) -> str:
+    """Re-insert <tg-emoji> tags for premium emoji after text processing."""
+    if not text or not emoji_map:
+        return text
+    from collections import deque
+    char_queue = {}
+    for emoji_char, doc_id in emoji_map:
+        char_queue.setdefault(emoji_char, deque()).append(doc_id)
+    result = []
+    i = 0
+    while i < len(text):
+        replaced = False
+        for emoji_char, q in char_queue.items():
+            elen = len(emoji_char)
+            if q and text[i:i + elen] == emoji_char:
+                doc_id = q.popleft()
+                result.append(f'<tg-emoji emoji-id="{doc_id}">{emoji_char}</tg-emoji>')
+                i += elen
+                replaced = True
+                break
+        if not replaced:
+            result.append(text[i])
+            i += 1
+    return ''.join(result)
 
 def _msg_to_html(m) -> str:
     """Convert Telethon message to HTML with premium custom emoji support."""
@@ -4854,124 +4896,228 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
             source_extra_patterns = await _get_source_patterns_list(source["id"])
             blacklist_extra = settings.get("blacklist", [])
 
+            # Group messages by album (grouped_id)
+            _album_groups = {}
+            for m in new_msgs:
+                gid = getattr(m, 'grouped_id', None)
+                if gid:
+                    _album_groups.setdefault(gid, []).append(m)
+            _processed_groups = set()
+
+            # Helper: clean text for mirror
+            def _mirror_clean(raw_text, sig, pats):
+                t = sanitize_html_for_telegram(raw_text)
+                t = _clean_links(t, sig, pats)
+                t = _cut_source_signature(t, sig)
+                for p in pats:
+                    t = _cut_source_signature(t, p)
+                t = re.sub(r'<(\w+)>\s*</\1>', '', t).strip()
+                return t
+
+            # Helper: publish with HTML fallback
+            async def _mirror_publish_single(chat_id, text, media_type, media_file_id, label):
+                try:
+                    if media_type == "photo" and media_file_id:
+                        await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                    elif media_type == "video" and media_file_id:
+                        await bot.send_video(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                    elif media_type == "animation" and media_file_id:
+                        await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                    elif media_type == "document" and media_file_id:
+                        await bot.send_document(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                    elif text:
+                        await bot.send_message(chat_id, _safe_text(text), parse_mode="HTML")
+                    else:
+                        return False
+                    log.info(f"  mirror ✓ published {label} from @{source['username']}")
+                    return True
+                except Exception as pub_e:
+                    if "can't parse entities" in str(pub_e).lower():
+                        log.info(f"  mirror {label}: HTML parse failed, retrying as plain text")
+                        try:
+                            plain = re.sub(r'<[^>]+>', '', text or '').strip()
+                            if media_type and media_file_id:
+                                send_fn = getattr(bot, f"send_{media_type}", None) or bot.send_document
+                                await send_fn(chat_id, media_file_id, caption=_safe_caption(plain))
+                            elif plain:
+                                await bot.send_message(chat_id, _safe_text(plain))
+                            else:
+                                return False
+                            log.info(f"  mirror ✓ published {label} (plain fallback)")
+                            return True
+                        except Exception as fb_e:
+                            log.warning(f"  mirror fallback error {label}: {fb_e}")
+                            return False
+                    else:
+                        log.warning(f"  mirror publish error {label}: {pub_e}")
+                        return False
+
+            # Helper: publish album with HTML fallback
+            async def _mirror_publish_album(chat_id, text, album_files, label):
+                from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
+                def _build_group(cap, pm):
+                    group = []
+                    for i, f in enumerate(album_files):
+                        c = _safe_caption(cap) if i == 0 else None
+                        p = pm if i == 0 else None
+                        if f["type"] == "photo":
+                            group.append(InputMediaPhoto(media=f["file_id"], caption=c, parse_mode=p))
+                        elif f["type"] in ("video", "animation"):
+                            group.append(InputMediaVideo(media=f["file_id"], caption=c, parse_mode=p))
+                        else:
+                            group.append(InputMediaDocument(media=f["file_id"], caption=c, parse_mode=p))
+                    return group
+                try:
+                    await bot.send_media_group(chat_id, _build_group(text, "HTML"))
+                    log.info(f"  mirror ✓ published {label} ({len(album_files)} files)")
+                    return True
+                except Exception as pub_e:
+                    if "can't parse entities" in str(pub_e).lower():
+                        log.info(f"  mirror {label}: HTML parse failed, retrying as plain text")
+                        try:
+                            plain = re.sub(r'<[^>]+>', '', text or '').strip()
+                            await bot.send_media_group(chat_id, _build_group(plain, None))
+                            log.info(f"  mirror ✓ published {label} (plain fallback)")
+                            return True
+                        except Exception as fb_e:
+                            log.warning(f"  mirror fallback error {label}: {fb_e}")
+                            return False
+                    else:
+                        log.warning(f"  mirror publish error {label}: {pub_e}")
+                        return False
+
             # Process and publish each new message (oldest first)
             for msg in reversed(new_msgs):
                 try:
-                    # Get HTML text
-                    text = _msg_to_html(msg)
-
-                    # Clean: remove signatures, links, ads
-                    if text:
-                        text = sanitize_html_for_telegram(text)
-                        text = _clean_links(text, source_signature, source_extra_patterns)
-                        text = _cut_source_signature(text, source_signature)
-                        for pat in source_extra_patterns:
-                            text = _cut_source_signature(text, pat)
-                        if contains_blacklisted(text, blacklist_extra):
-                            log.info(f"  mirror skip msg {msg.id}: blacklisted")
-                            continue
-                        # Remove empty tags, trim
-                        text = re.sub(r'<(\w+)>\s*</\1>', '', text).strip()
-
-                    # AI rephrase / classify if enabled
-                    if text and settings.get("ai_mode") == "on":
-                        ai_result = await process_text_ai(
-                            text, "on", settings,
-                            source_signature=source_signature,
-                            extra_patterns=source_extra_patterns,
-                            has_media=bool(msg.media)
-                        )
-                        if not ai_result:
-                            log.info(f"  mirror skip msg {msg.id}: AI classified as ad/empty")
-                            continue
-                        text = ai_result
-
-                    # Skip empty text-only posts
-                    if not msg.media and not text:
+                    gid = getattr(msg, 'grouped_id', None)
+                    if gid and gid in _processed_groups:
                         continue
+                    if gid:
+                        _processed_groups.add(gid)
 
-                    # Handle media
-                    media_type = None
-                    media_file_id = None
-                    media_files_json = None
+                    is_album = bool(gid and len(_album_groups.get(gid, [])) > 1)
 
-                    if msg.media:
-                        if isinstance(msg.media, MessageMediaPhoto):
-                            media_type = "photo"
-                            result = await _download_and_get_file_id(client, msg, "photo")
-                            if isinstance(result, tuple):
-                                media_file_id = result[0]
-                            else:
-                                media_file_id = result
-                        elif isinstance(msg.media, MessageMediaDocument):
-                            mime = getattr(msg.media.document, "mime_type", "") or ""
-                            if "video" in mime or "gif" in mime:
-                                media_type = "animation" if "gif" in mime else "video"
-                            else:
-                                media_type = "document"
-                            result = await _download_and_get_file_id(client, msg, media_type)
-                            if isinstance(result, tuple):
-                                media_file_id = result[0]
-                            else:
-                                media_file_id = result
+                    if is_album:
+                        # ── Album: multiple media in one post ──
+                        album_msgs = sorted(_album_groups[gid], key=lambda m: m.id)
+                        text = ""
+                        for am in album_msgs:
+                            t = _msg_to_html(am)
+                            if t: text = t; break
 
-                    if not media_file_id and not text:
-                        continue
+                        _pemoji = []
+                        if text:
+                            text, _pemoji = _extract_premium_emoji(text)
+                            text = _mirror_clean(text, source_signature, source_extra_patterns)
+                            if contains_blacklisted(text, blacklist_extra):
+                                log.info(f"  mirror skip album {gid}: blacklisted")
+                                continue
 
-                    # Build footer
-                    footer = build_footer(settings, has_media=bool(media_type))
-                    if footer:
-                        text = (text + footer) if text else ""
+                        if text and settings.get("ai_mode") == "on":
+                            ai_result = await process_text_ai(
+                                text, "on", settings,
+                                source_signature=source_signature,
+                                extra_patterns=source_extra_patterns,
+                                has_media=True)
+                            if not ai_result:
+                                log.info(f"  mirror skip album {gid}: AI classified as ad/empty")
+                                continue
+                            text = ai_result
 
-                    # Post button
-                    if settings.get("postbtn_enabled") and settings.get("postbtn_label") and settings.get("postbtn_url"):
-                        text = (text or "") + '\n\n<b><a href="' + settings["postbtn_url"] + '">' + settings["postbtn_label"] + '</a></b>'
+                        album_files = []
+                        for am in album_msgs:
+                            if not am.media: continue
+                            if isinstance(am.media, MessageMediaPhoto):
+                                fid = await _download_and_get_file_id(client, am, "photo")
+                                if fid:
+                                    if isinstance(fid, tuple): fid = fid[0]
+                                    album_files.append({"type": "photo", "file_id": fid})
+                            elif isinstance(am.media, MessageMediaDocument):
+                                mime = getattr(am.media.document, "mime_type", "") or ""
+                                mtype = "video" if "video" in mime else ("animation" if "gif" in mime else "document")
+                                fid = await _download_and_get_file_id(client, am, mtype)
+                                if fid:
+                                    if isinstance(fid, tuple): fid = fid[0]
+                                    album_files.append({"type": mtype, "file_id": fid})
 
-                    # Strip tg-emoji tags — Bot API often can't parse them
-                    text = _strip_tg_emoji(text) if text else text
+                        if not album_files and not text:
+                            continue
 
-                    # Publish directly to channel
-                    try:
-                        if media_type == "photo" and media_file_id:
-                            await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                        elif media_type == "video" and media_file_id:
-                            await bot.send_video(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                        elif media_type == "animation" and media_file_id:
-                            await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                        elif media_type == "document" and media_file_id:
-                            await bot.send_document(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
+                        footer = build_footer(settings, has_media=True)
+                        if footer and text: text = text + footer
+                        if settings.get("postbtn_enabled") and settings.get("postbtn_label") and settings.get("postbtn_url"):
+                            text = (text or "") + '\n\n<b><a href="' + settings["postbtn_url"] + '">' + settings["postbtn_label"] + '</a></b>'
+                        if _pemoji and text:
+                            text = _restore_premium_emoji(text, _pemoji)
+
+                        if len(album_files) >= 2:
+                            ok = await _mirror_publish_album(chat_id, text, album_files, f"album {gid}")
+                        elif album_files:
+                            ok = await _mirror_publish_single(chat_id, text, album_files[0]["type"], album_files[0]["file_id"], f"msg {msg.id}")
                         elif text:
-                            await bot.send_message(chat_id, _safe_text(text), parse_mode="HTML")
+                            ok = await _mirror_publish_single(chat_id, text, None, None, f"msg {msg.id}")
                         else:
                             continue
+                        if ok:
+                            published += 1
+                            await save_last_published(ch_id, 0)
 
-                        published += 1
-                        await save_last_published(ch_id, 0)
-                        log.info(f"  mirror ✓ published msg {msg.id} from @{source['username']}")
-                    except Exception as pub_e:
-                        if "can't parse entities" in str(pub_e).lower():
-                            log.info(f"  mirror msg {msg.id}: HTML parse failed, retrying as plain text")
-                            try:
-                                plain = re.sub(r'<[^>]+>', '', text or '').strip()
-                                if media_type == "photo" and media_file_id:
-                                    await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(plain))
-                                elif media_type == "video" and media_file_id:
-                                    await bot.send_video(chat_id, media_file_id, caption=_safe_caption(plain))
-                                elif media_type == "animation" and media_file_id:
-                                    await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(plain))
-                                elif media_type == "document" and media_file_id:
-                                    await bot.send_document(chat_id, media_file_id, caption=_safe_caption(plain))
-                                elif plain:
-                                    await bot.send_message(chat_id, _safe_text(plain))
+                    else:
+                        # ── Single message ──
+                        text = _msg_to_html(msg)
+                        _pemoji = []
+                        if text:
+                            text, _pemoji = _extract_premium_emoji(text)
+                            text = _mirror_clean(text, source_signature, source_extra_patterns)
+                            if contains_blacklisted(text, blacklist_extra):
+                                log.info(f"  mirror skip msg {msg.id}: blacklisted")
+                                continue
+
+                        if text and settings.get("ai_mode") == "on":
+                            ai_result = await process_text_ai(
+                                text, "on", settings,
+                                source_signature=source_signature,
+                                extra_patterns=source_extra_patterns,
+                                has_media=bool(msg.media))
+                            if not ai_result:
+                                log.info(f"  mirror skip msg {msg.id}: AI classified as ad/empty")
+                                continue
+                            text = ai_result
+
+                        if not msg.media and not text:
+                            continue
+
+                        media_type = None
+                        media_file_id = None
+                        if msg.media:
+                            if isinstance(msg.media, MessageMediaPhoto):
+                                media_type = "photo"
+                                result = await _download_and_get_file_id(client, msg, "photo")
+                                media_file_id = result[0] if isinstance(result, tuple) else result
+                            elif isinstance(msg.media, MessageMediaDocument):
+                                mime = getattr(msg.media.document, "mime_type", "") or ""
+                                if "video" in mime or "gif" in mime:
+                                    media_type = "animation" if "gif" in mime else "video"
                                 else:
-                                    continue
-                                published += 1
-                                await save_last_published(ch_id, 0)
-                                log.info(f"  mirror ✓ published msg {msg.id} (plain fallback) from @{source['username']}")
-                            except Exception as fb_e:
-                                log.warning(f"  mirror fallback error msg {msg.id}: {fb_e}")
-                        else:
-                            log.warning(f"  mirror publish error msg {msg.id}: {pub_e}")
+                                    media_type = "document"
+                                result = await _download_and_get_file_id(client, msg, media_type)
+                                media_file_id = result[0] if isinstance(result, tuple) else result
+
+                        if not media_file_id and not text:
+                            continue
+
+                        footer = build_footer(settings, has_media=bool(media_type))
+                        if footer:
+                            text = (text + footer) if text else ""
+                        if settings.get("postbtn_enabled") and settings.get("postbtn_label") and settings.get("postbtn_url"):
+                            text = (text or "") + '\n\n<b><a href="' + settings["postbtn_url"] + '">' + settings["postbtn_label"] + '</a></b>'
+                        if _pemoji and text:
+                            text = _restore_premium_emoji(text, _pemoji)
+
+                        ok = await _mirror_publish_single(chat_id, text, media_type, media_file_id, f"msg {msg.id}")
+                        if ok:
+                            published += 1
+                            await save_last_published(ch_id, 0)
 
                 except Exception as proc_e:
                     log.warning(f"  mirror process error msg {msg.id}: {proc_e}")
