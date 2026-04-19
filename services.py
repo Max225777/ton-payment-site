@@ -1433,7 +1433,7 @@ def build_footer(settings: dict, has_media: bool = False) -> str:
 # ─── AI ───────────────────────────────────────────────────────────────────────
 
 _ai_semaphore = asyncio.Semaphore(AI_MAX_PARALLEL)
-_download_semaphore = asyncio.Semaphore(2)  # Max 2 concurrent media downloads to prevent OOM
+_download_semaphore = asyncio.Semaphore(1)  # Max 1 concurrent media download to prevent OOM
 
 
 async def log_ai_usage(user_id: int, tokens: int = 0):
@@ -4873,6 +4873,19 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                         # Remove empty tags, trim
                         text = re.sub(r'<(\w+)>\s*</\1>', '', text).strip()
 
+                    # AI rephrase / classify if enabled
+                    if text and settings.get("ai_mode") == "on":
+                        ai_result = await process_text_ai(
+                            text, "on", settings,
+                            source_signature=source_signature,
+                            extra_patterns=source_extra_patterns,
+                            has_media=bool(msg.media)
+                        )
+                        if not ai_result:
+                            log.info(f"  mirror skip msg {msg.id}: AI classified as ad/empty")
+                            continue
+                        text = ai_result
+
                     # Skip empty text-only posts
                     if not msg.media and not text:
                         continue
@@ -4936,7 +4949,29 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                         await save_last_published(ch_id, 0)
                         log.info(f"  mirror ✓ published msg {msg.id} from @{source['username']}")
                     except Exception as pub_e:
-                        log.warning(f"  mirror publish error msg {msg.id}: {pub_e}")
+                        if "can't parse entities" in str(pub_e).lower():
+                            log.info(f"  mirror msg {msg.id}: HTML parse failed, retrying as plain text")
+                            try:
+                                plain = re.sub(r'<[^>]+>', '', text or '').strip()
+                                if media_type == "photo" and media_file_id:
+                                    await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(plain))
+                                elif media_type == "video" and media_file_id:
+                                    await bot.send_video(chat_id, media_file_id, caption=_safe_caption(plain))
+                                elif media_type == "animation" and media_file_id:
+                                    await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(plain))
+                                elif media_type == "document" and media_file_id:
+                                    await bot.send_document(chat_id, media_file_id, caption=_safe_caption(plain))
+                                elif plain:
+                                    await bot.send_message(chat_id, _safe_text(plain))
+                                else:
+                                    continue
+                                published += 1
+                                await save_last_published(ch_id, 0)
+                                log.info(f"  mirror ✓ published msg {msg.id} (plain fallback) from @{source['username']}")
+                            except Exception as fb_e:
+                                log.warning(f"  mirror fallback error msg {msg.id}: {fb_e}")
+                        else:
+                            log.warning(f"  mirror publish error msg {msg.id}: {pub_e}")
 
                 except Exception as proc_e:
                     log.warning(f"  mirror process error msg {msg.id}: {proc_e}")
