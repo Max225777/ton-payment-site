@@ -2978,7 +2978,7 @@ async def _resolve_source_entity(client, source: dict):
 
 
 import re as _re_emoji
-_RE_EMOJI_TAG = _re_emoji.compile(r'<emoji\s+id="(\d+)">(.*?)</emoji>', _re_emoji.DOTALL)
+_RE_EMOJI_TAG = _re_emoji.compile(r'<emoji\s+(?:id|document_id)="(\d+)">(.*?)</emoji>', _re_emoji.DOTALL)
 _RE_TG_EMOJI_TAG = _re_emoji.compile(r'<tg-emoji[^>]*>(.*?)</tg-emoji>', _re_emoji.DOTALL)
 _RE_TG_EMOJI_FULL = _re_emoji.compile(r'<tg-emoji\s+emoji-id="(\d+)">(.*?)</tg-emoji>', _re_emoji.DOTALL)
 
@@ -2987,6 +2987,13 @@ def _strip_tg_emoji(text: str) -> str:
     if not text or '<tg-emoji' not in text:
         return text
     return _RE_TG_EMOJI_TAG.sub(r'\1', text)
+
+def _utf16_slice(text: str, offset: int, length: int) -> str:
+    """Slice text using Telegram's UTF-16 offsets."""
+    encoded = text.encode('utf-16-le')
+    start = offset * 2
+    end = (offset + length) * 2
+    return encoded[start:end].decode('utf-16-le')
 
 def _extract_premium_emoji(text: str):
     """Extract premium emoji from text, replace with plain emoji chars.
@@ -3036,23 +3043,23 @@ def _msg_to_html(m) -> str:
     except Exception:
         raw = (getattr(m, "text", None) or "").strip()
         return raw
-    # Convert Telethon <emoji id="X">Y</emoji> → Bot API <tg-emoji emoji-id="X">Y</tg-emoji>
+    # Convert Telethon <emoji id/document_id="X">Y</emoji> → Bot API format
     if '<emoji ' in raw:
         raw = _RE_EMOJI_TAG.sub(r'<tg-emoji emoji-id="\1">\2</tg-emoji>', raw)
     # Fallback: if Telethon didn't convert them, handle entities manually
-    if not '<tg-emoji' in raw:
+    if '<tg-emoji' not in raw:
         try:
             from telethon.tl.types import MessageEntityCustomEmoji
             entities = getattr(m, "entities", None) or []
             customs = [e for e in entities if isinstance(e, MessageEntityCustomEmoji)]
             if customs:
                 text = getattr(m, "text", "") or ""
-                # Apply in reverse order to preserve offsets
                 for ce in sorted(customs, key=lambda e: e.offset, reverse=True):
-                    emoji_char = text[ce.offset:ce.offset + ce.length]
+                    try:
+                        emoji_char = _utf16_slice(text, ce.offset, ce.length)
+                    except Exception:
+                        emoji_char = text[ce.offset:ce.offset + ce.length]
                     tag = f'<tg-emoji emoji-id="{ce.document_id}">{emoji_char}</tg-emoji>'
-                    # Find the emoji_char in raw HTML and wrap it
-                    # Simple replacement — first occurrence from the rough position
                     idx = raw.find(emoji_char)
                     if idx >= 0:
                         raw = raw[:idx] + tag + raw[idx + len(emoji_char):]
@@ -4916,51 +4923,57 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                 t = sanitize_html_for_telegram(t)
                 return t
 
-            # Helper: publish with HTML fallback
-            async def _mirror_publish_single(chat_id, text, media_type, media_file_id, label):
+            # Helper: 3-tier send — full HTML → HTML w/o tg-emoji → plain text
+            async def _try_send(send_coro_fn, text, label):
+                """Try sending with 3 fallback tiers. send_coro_fn(caption, parse_mode) → awaitable."""
+                # Tier 1: full HTML (with tg-emoji if present)
                 try:
-                    if media_type == "photo" and media_file_id:
-                        await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                    elif media_type == "video" and media_file_id:
-                        await bot.send_video(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                    elif media_type == "animation" and media_file_id:
-                        await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                    elif media_type == "document" and media_file_id:
-                        await bot.send_document(chat_id, media_file_id, caption=_safe_caption(text), parse_mode="HTML")
-                    elif text:
-                        await bot.send_message(chat_id, _safe_text(text), parse_mode="HTML")
-                    else:
-                        return False
+                    await send_coro_fn(_safe_caption(text) if text else "", "HTML")
                     log.info(f"  mirror ✓ published {label} from @{source['username']}")
                     return True
-                except Exception as pub_e:
-                    if "can't parse entities" in str(pub_e).lower():
-                        log.info(f"  mirror {label}: HTML parse failed, retrying as plain text")
-                        try:
-                            plain = re.sub(r'<[^>]+>', '', text or '').strip()
-                            if media_type and media_file_id:
-                                send_fn = getattr(bot, f"send_{media_type}", None) or bot.send_document
-                                await send_fn(chat_id, media_file_id, caption=_safe_caption(plain))
-                            elif plain:
-                                await bot.send_message(chat_id, _safe_text(plain))
-                            else:
-                                return False
-                            log.info(f"  mirror ✓ published {label} (plain fallback)")
-                            return True
-                        except Exception as fb_e:
-                            log.warning(f"  mirror fallback error {label}: {fb_e}")
-                            return False
-                    else:
-                        log.warning(f"  mirror publish error {label}: {pub_e}")
+                except Exception as e1:
+                    if "can't parse entities" not in str(e1).lower():
+                        log.warning(f"  mirror publish error {label}: {e1}")
                         return False
+                # Tier 2: strip only tg-emoji, keep bold/italic/links
+                stripped = _strip_tg_emoji(text) if text else text
+                if stripped != text:
+                    try:
+                        await send_coro_fn(_safe_caption(stripped) if stripped else "", "HTML")
+                        log.info(f"  mirror ✓ published {label} (stripped tg-emoji)")
+                        return True
+                    except Exception:
+                        pass
+                # Tier 3: strip ALL HTML
+                plain = re.sub(r'<[^>]+>', '', text or '').strip()
+                try:
+                    await send_coro_fn(_safe_caption(plain) if plain else "", None)
+                    log.info(f"  mirror ✓ published {label} (plain fallback)")
+                    return True
+                except Exception as e3:
+                    log.warning(f"  mirror fallback error {label}: {e3}")
+                    return False
 
-            # Helper: publish album with HTML fallback
+            # Helper: publish single media or text
+            async def _mirror_publish_single(chat_id, text, media_type, media_file_id, label):
+                if media_type and media_file_id:
+                    async def _send(cap, pm):
+                        send_fn = getattr(bot, f"send_{media_type}", bot.send_document)
+                        await send_fn(chat_id, media_file_id, caption=cap, parse_mode=pm)
+                    return await _try_send(_send, text, label)
+                elif text:
+                    async def _send(cap, pm):
+                        await bot.send_message(chat_id, _safe_text(cap or ""), parse_mode=pm)
+                    return await _try_send(_send, text, label)
+                return False
+
+            # Helper: publish album
             async def _mirror_publish_album(chat_id, text, album_files, label):
                 from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument
                 def _build_group(cap, pm):
                     group = []
                     for i, f in enumerate(album_files):
-                        c = _safe_caption(cap) if i == 0 else None
+                        c = cap if i == 0 else None
                         p = pm if i == 0 else None
                         if f["type"] == "photo":
                             group.append(InputMediaPhoto(media=f["file_id"], caption=c, parse_mode=p))
@@ -4969,24 +4982,9 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                         else:
                             group.append(InputMediaDocument(media=f["file_id"], caption=c, parse_mode=p))
                     return group
-                try:
-                    await bot.send_media_group(chat_id, _build_group(text, "HTML"))
-                    log.info(f"  mirror ✓ published {label} ({len(album_files)} files)")
-                    return True
-                except Exception as pub_e:
-                    if "can't parse entities" in str(pub_e).lower():
-                        log.info(f"  mirror {label}: HTML parse failed, retrying as plain text")
-                        try:
-                            plain = re.sub(r'<[^>]+>', '', text or '').strip()
-                            await bot.send_media_group(chat_id, _build_group(plain, None))
-                            log.info(f"  mirror ✓ published {label} (plain fallback)")
-                            return True
-                        except Exception as fb_e:
-                            log.warning(f"  mirror fallback error {label}: {fb_e}")
-                            return False
-                    else:
-                        log.warning(f"  mirror publish error {label}: {pub_e}")
-                        return False
+                async def _send(cap, pm):
+                    await bot.send_media_group(chat_id, _build_group(cap, pm))
+                return await _try_send(_send, text, label)
 
             # Process and publish each new message (oldest first)
             for msg in reversed(new_msgs):

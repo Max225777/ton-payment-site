@@ -278,11 +278,41 @@ async def run_autopost(bot: Bot):
                         _spawn(parse_channel_sources(ch["id"]))
 
                 except Exception as e:
-                    if "can't parse entities" in str(e).lower() and has_media:
+                    if "can't parse entities" not in str(e).lower():
+                        log.error(f"Autopost publish error ch {ch['id']}: {e}")
+                        continue
+                    # Tier 2: strip tg-emoji only, keep rest of HTML
+                    from services import _strip_tg_emoji
+                    import re as _re
+                    stripped = _strip_tg_emoji(text) if text else text
+                    _pub_ok = False
+                    if stripped != text:
                         try:
-                            import re as _re
+                            if media_type == "album" and media_files_json:
+                                sent_list = await bot.send_media_group(chat_id, _build_album(stripped, ParseMode.HTML))
+                                sent = sent_list[0]
+                            elif media_type == "photo" and media_file_id:
+                                sent = await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(stripped), parse_mode=ParseMode.HTML)
+                            elif media_type == "video" and media_file_id:
+                                sent = await bot.send_video(chat_id, media_file_id, caption=_safe_caption(stripped), parse_mode=ParseMode.HTML)
+                            elif media_type == "animation" and media_file_id:
+                                sent = await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(stripped), parse_mode=ParseMode.HTML)
+                            elif media_type == "document" and media_file_id:
+                                sent = await bot.send_document(chat_id, media_file_id, caption=_safe_caption(stripped), parse_mode=ParseMode.HTML)
+                            elif stripped:
+                                sent = await bot.send_message(chat_id, _safe_text(stripped), parse_mode=ParseMode.HTML)
+                            _pub_ok = True
+                            log.info(f"Autopost: published post {post['id']} (stripped tg-emoji)")
+                        except Exception:
+                            pass
+                    # Tier 3: strip ALL HTML
+                    if not _pub_ok:
+                        try:
                             plain = _re.sub(r'<[^>]+>', '', text or '').strip()
-                            if media_type == "photo" and media_file_id:
+                            if media_type == "album" and media_files_json:
+                                sent_list = await bot.send_media_group(chat_id, _build_album(plain, None))
+                                sent = sent_list[0]
+                            elif media_type == "photo" and media_file_id:
                                 sent = await bot.send_photo(chat_id, media_file_id, caption=_safe_caption(plain))
                             elif media_type == "video" and media_file_id:
                                 sent = await bot.send_video(chat_id, media_file_id, caption=_safe_caption(plain))
@@ -290,15 +320,16 @@ async def run_autopost(bot: Bot):
                                 sent = await bot.send_animation(chat_id, media_file_id, caption=_safe_caption(plain))
                             elif media_type == "document" and media_file_id:
                                 sent = await bot.send_document(chat_id, media_file_id, caption=_safe_caption(plain))
-                            if sent:
-                                await update_post_status(post["id"], "published", only_if_pending=True)
-                                await save_last_published(ch["id"], sent.message_id)
-                                await cleanup_published_media(post["id"])
-                                log.info(f"Autopost: published post {post['id']} (plain fallback)")
+                            elif plain:
+                                sent = await bot.send_message(chat_id, _safe_text(plain))
+                            _pub_ok = True
+                            log.info(f"Autopost: published post {post['id']} (plain fallback)")
                         except Exception as _fe:
                             log.error(f"Autopost fallback error ch {ch['id']}: {_fe}")
-                    else:
-                        log.error(f"Autopost publish error ch {ch['id']}: {e}")
+                    if _pub_ok and sent:
+                        await update_post_status(post["id"], "published", only_if_pending=True)
+                        await save_last_published(ch["id"], sent.message_id)
+                        await cleanup_published_media(post["id"])
 
         except Exception as e:
             log.error(f"Autopost error ch {ch['id']}: {e}")
