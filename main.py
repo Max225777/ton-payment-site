@@ -851,12 +851,22 @@ async def api_queue_action(request):
                 sent_list = await bot.send_media_group(chat_id, _mk_album(text, "HTML"))
                 sent = sent_list[0] if sent_list else None
             except Exception as _ae:
-                if "can't parse entities" in str(_ae).lower():
+                if "can't parse entities" not in str(_ae).lower():
+                    raise
+                from services import _strip_tg_emoji
+                _stripped = _strip_tg_emoji(text) if text else text
+                _pub_ok = False
+                if _stripped != text:
+                    try:
+                        sent_list = await bot.send_media_group(chat_id, _mk_album(_stripped, "HTML"))
+                        sent = sent_list[0] if sent_list else None
+                        _pub_ok = True
+                    except Exception:
+                        pass
+                if not _pub_ok:
                     plain = _re_pub.sub(r'<[^>]+>', '', text or '').strip()
                     sent_list = await bot.send_media_group(chat_id, _mk_album(plain, None))
                     sent = sent_list[0] if sent_list else None
-                else:
-                    raise
         elif mt == "photo" and mf:
             sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(text), parse_mode="HTML")
         elif mt in ("video","animation") and mf:
@@ -878,24 +888,42 @@ async def api_queue_action(request):
         return _j({"ok":True,"action":"published"})
     except Exception as e:
         if "can't parse entities" in str(e).lower():
-            try:
-                import re as _re_pub
-                plain = _re_pub.sub(r'<[^>]+>', '', text or '').strip()
-                if mt == "photo" and mf:
-                    sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(plain))
-                elif mt in ("video","animation") and mf:
-                    sent = await bot.send_video(chat_id, mf, caption=_safe_caption(plain))
-                elif mt == "document" and mf:
-                    sent = await bot.send_document(chat_id, mf, caption=_safe_caption(plain))
-                elif plain:
-                    sent = await bot.send_message(chat_id, _safe_text(plain))
-                if sent:
-                    await update_post_status(post_id, "published")
-                    await save_last_published(post_row["channel_id"], sent.message_id)
-                    return _j({"ok":True,"action":"published"})
-            except Exception as _fe:
-                log.error(f"publish fallback error: {_fe}")
-                return _web.json_response({"error":str(_fe)}, status=500)
+            from services import _strip_tg_emoji
+            _stripped2 = _strip_tg_emoji(text) if text else text
+            _pub_ok2 = False
+            if _stripped2 != text:
+                try:
+                    if mt == "photo" and mf:
+                        sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(_stripped2), parse_mode="HTML")
+                    elif mt in ("video","animation") and mf:
+                        sent = await bot.send_video(chat_id, mf, caption=_safe_caption(_stripped2), parse_mode="HTML")
+                    elif mt == "document" and mf:
+                        sent = await bot.send_document(chat_id, mf, caption=_safe_caption(_stripped2), parse_mode="HTML")
+                    elif _stripped2:
+                        sent = await bot.send_message(chat_id, _safe_text(_stripped2), parse_mode="HTML")
+                    _pub_ok2 = True
+                except Exception:
+                    pass
+            if not _pub_ok2:
+                try:
+                    import re as _re_pub
+                    plain = _re_pub.sub(r'<[^>]+>', '', text or '').strip()
+                    if mt == "photo" and mf:
+                        sent = await bot.send_photo(chat_id, mf, caption=_safe_caption(plain))
+                    elif mt in ("video","animation") and mf:
+                        sent = await bot.send_video(chat_id, mf, caption=_safe_caption(plain))
+                    elif mt == "document" and mf:
+                        sent = await bot.send_document(chat_id, mf, caption=_safe_caption(plain))
+                    elif plain:
+                        sent = await bot.send_message(chat_id, _safe_text(plain))
+                    _pub_ok2 = True
+                except Exception as _fe:
+                    log.error(f"publish fallback error: {_fe}")
+                    return _web.json_response({"error":str(_fe)}, status=500)
+            if _pub_ok2 and sent:
+                await update_post_status(post_id, "published")
+                await save_last_published(post_row["channel_id"], sent.message_id)
+                return _j({"ok":True,"action":"published"})
         log.error(f"publish error: {e}")
         return _web.json_response({"error":str(e)}, status=500)
 
