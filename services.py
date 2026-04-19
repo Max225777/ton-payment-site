@@ -2055,7 +2055,7 @@ def _clean_links(text, source_signature: str = "", extra_patterns: list = None):
         if any(d in href for d in PROMO_DOMAINS): return ""
         return inner
 
-    text = _r.sub(r'<a[^>]+href=.([^>]{1,400}?).[^>]*>(.*?)</a>',
+    text = _r.sub(r'<a\s[^>]*href="([^"]{1,400})"[^>]*>(.*?)</a>',
                   handle_link, text, flags=_r.DOTALL)
 
     # Step 3: remove remaining inline links/usernames
@@ -2216,6 +2216,7 @@ async def process_text_ai(text: str, mode: str, settings: dict,
     cleaned = _cut_source_signature(cleaned, source_signature)
     for _pat in extra_patterns:
         cleaned = _cut_source_signature(cleaned, _pat)
+    cleaned = sanitize_html_for_telegram(cleaned)
     _cl_plain = _plain(cleaned)
     log.info(f"  [S1] after clean+sig END: {repr(_cl_plain[-150:])}")
     log.info(f"  [S1] sig removed: {source_signature[:30] not in _cl_plain if source_signature else True}")
@@ -4912,6 +4913,7 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
                 for p in pats:
                     t = _cut_source_signature(t, p)
                 t = re.sub(r'<(\w+)>\s*</\1>', '', t).strip()
+                t = sanitize_html_for_telegram(t)
                 return t
 
             # Helper: publish with HTML fallback
