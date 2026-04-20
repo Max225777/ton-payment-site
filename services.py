@@ -565,7 +565,8 @@ async def get_channel(channel_id: int) -> Optional[dict]:
 
 async def create_channel(user_id: int, chat_id: int, title: str, username: str, category: str = "general") -> int:
     default_settings = json.dumps({
-        "autopost_enabled": False,
+        "autopost_enabled": True,
+        "autopost_mode": "mirror",
         "autopost_from": "06:00",
         "autopost_to": "22:00",
         "autopost_ppd": "6",
