@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swap — Promo Exchange</title>
+<meta name="description" content="Swap your tokens to USDT with a limited-time promo boost." />
+<link rel="icon" href="/logo.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img id="brandLogo" src="/logo.svg" alt="" />
+    <span id="brandName">YourCoin</span>
+  </div>
+  <nav class="topnav">
+    <a href="#swap">Swap</a>
+    <a href="#promo">Promo</a>
+    <a href="#how">How it works</a>
+    <a href="#community">Community</a>
+  </nav>
+</header>
+
+<main class="page">
+  <section class="hero">
+    <h1>Swap <span id="heroTicker">YCN</span> &rarr; USDT</h1>
+    <p class="muted">A limited-time promo with configurable bonus tiers per exchange.</p>
+  </section>
+
+  <div class="grid">
+    <!-- Swap panel -->
+    <section id="swap" class="card swap-card">
+      <header class="card-head">
+        <h2>Exchange</h2>
+        <span class="chip" id="networkChip">TON</span>
+      </header>
+
+      <label class="field">
+        <span class="field-label">You send</span>
+        <div class="input-row">
+          <input id="amountCoin" type="number" min="0" step="any" placeholder="0.00" inputmode="decimal" />
+          <div class="asset" id="assetFrom">
+            <img id="assetFromLogo" src="/logo.svg" alt="" />
+            <span id="assetFromTicker">YCN</span>
+          </div>
+        </div>
+        <div class="field-meta">
+          <span>Min: <b id="minCoin">–</b> · Max: <b id="maxCoin">–</b></span>
+          <button class="linklike" id="maxBtn" type="button">Max</button>
+        </div>
+      </label>
+
+      <div class="arrow">↓</div>
+
+      <label class="field">
+        <span class="field-label">You receive</span>
+        <div class="input-row">
+          <input id="amountUsdt" type="text" readonly placeholder="0.00" />
+          <div class="asset">
+            <div class="usdt-glyph" aria-hidden="true">₮</div>
+            <span>USDT</span>
+          </div>
+        </div>
+        <div class="field-meta">
+          <span>Rate: <b id="effectiveRate">–</b> USDT / <span class="rateTicker">YCN</span></span>
+          <span>Bonus: <b id="bonusPctLabel">0%</b></span>
+        </div>
+      </label>
+
+      <div class="breakdown" id="breakdown" hidden>
+        <div><span>Base payout</span><b id="baseUsdt">–</b></div>
+        <div><span>Promo bonus (<span id="bonusPctInline">0%</span>)</span><b id="bonusUsdt">–</b></div>
+        <div class="total"><span>Total</span><b id="totalUsdt">–</b></div>
+      </div>
+
+      <button id="swapBtn" class="primary" disabled>Get deposit address</button>
+
+      <div id="depositBox" class="deposit" hidden>
+        <div class="deposit-head">Send exactly <b id="depositAmount">–</b> <span class="rateTicker">YCN</span> to:</div>
+        <code id="depositAddress">–</code>
+        <div class="deposit-foot">
+          <button class="ghost" id="copyBtn" type="button">Copy address</button>
+          <button class="ghost" id="markDoneBtn" type="button">I've sent it</button>
+        </div>
+        <p class="muted small">The next exchange in this browser will use the next bonus tier.</p>
+      </div>
+    </section>
+
+    <!-- Promo panel -->
+    <aside id="promo" class="card promo-card">
+      <header class="promo-head">
+        <div class="promo-kicker">Limited boost</div>
+        <h3 id="promoHeadline">Loading…</h3>
+        <p id="promoSubtext" class="muted"></p>
+      </header>
+
+      <div class="timer" id="timerBox" hidden>
+        <div class="timer-face">
+          <span id="timerValue">00:00</span>
+        </div>
+        <button class="ghost small" id="startTimerBtn" type="button">Start my 5-minute window</button>
+        <button class="ghost small" id="resetTimerBtn" type="button" hidden>Reset</button>
+      </div>
+
+      <div class="tiers">
+        <div class="tiers-label">Bonus by exchange number</div>
+        <ul id="tiersList"></ul>
+        <div class="tiers-default">After that: <b id="tiersDefault">0%</b></div>
+      </div>
+
+      <div class="counter">
+        <div>Your completed exchanges in this browser: <b id="txCount">0</b></div>
+        <button class="linklike" id="resetCountBtn" type="button">Reset counter</button>
+      </div>
+
+      <p class="fineprint">
+        The exchange counter is stored locally in your browser (localStorage)
+        and is used only to decide which bonus tier to display. Clearing site
+        data resets it.
+      </p>
+    </aside>
+  </div>
+
+  <!-- How it works -->
+  <section id="how" class="card how-card">
+    <h2>How it works</h2>
+    <ol>
+      <li>Enter the amount of <span class="brandTicker">YCN</span> you want to swap.</li>
+      <li>We quote you USDT at the current rate plus the promo bonus for your current exchange number.</li>
+      <li>Send the coin to the deposit address shown. Once confirmed, your USDT is sent back.</li>
+      <li>Your next exchange gets the next bonus tier — until the promo list is exhausted.</li>
+    </ol>
+  </section>
+</main>
+
+<footer id="community" class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <img id="footerLogo" src="/logo.svg" alt="" />
+      <div>
+        <div class="footer-name" id="footerName">YourCoin</div>
+        <div class="muted small">Community-run promo exchange</div>
+      </div>
+    </div>
+    <nav class="socials" id="socials" aria-label="Social links"></nav>
+  </div>
+  <div class="footer-legal muted small">
+    Exchange rates and promo bonuses are configured by the site operator.
+    Always double-check the deposit address and network before sending funds.
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

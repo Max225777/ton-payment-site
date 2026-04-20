@@ -1,1 +1,7 @@
 __pycache__/
+
+# Node / web app
+web/node_modules/
+web/.env
+web/.env.local
+web/npm-debug.log*
