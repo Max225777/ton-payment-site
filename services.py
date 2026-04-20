@@ -4898,7 +4898,18 @@ async def mirror_check_and_publish(channel: dict, bot) -> int:
             log.info(f"  mirror @{source['username']}: batch={_total_batch} seen={_already_seen} new={len(new_msgs)}")
             if not new_msgs:
                 continue
-            new_msgs = new_msgs[:max_mirror_posts]
+
+            # Too many new msgs = mode switch or large gap — seed all, publish only newest 1
+            if len(new_msgs) > 2:
+                try:
+                    seed_batch = [(m.id, getattr(m, 'grouped_id', None)) for m in batch if getattr(m, 'id', None)]
+                    await mark_messages_seen(ch_id, source["id"], seed_batch)
+                    log.info(f"  mirror @{source['username']}: catch-up ({len(new_msgs)} new), seeded as seen, publishing only newest")
+                except Exception:
+                    pass
+                new_msgs = new_msgs[:1]
+            else:
+                new_msgs = new_msgs[:max_mirror_posts]
 
             # Get source signature & patterns
             source_signature = await _get_source_signature(source["id"])
