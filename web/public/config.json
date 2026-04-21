@@ -1,0 +1,35 @@
+{
+  "coin": {
+    "name": "DUST",
+    "ticker": "DUST",
+    "logoUrl": "./logo.svg",
+    "accent": "#f4b840",
+    "accent2": "#ff7a1a"
+  },
+  "rate": {
+    "baseUsdtPerCoin": 0.0001,
+    "minCoin": 100,
+    "maxCoin": 1000000
+  },
+  "bonus": {
+    "tiersPct": [2.5, 1.75, 3.65],
+    "defaultPct": 0
+  },
+  "promo": {
+    "durationMinutes": 5,
+    "headline": "Limited 5-minute boost",
+    "subtext": "Better rates on your first DUST → USDT swaps"
+  },
+  "deposit": {
+    "address": "EQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "network": "TON"
+  },
+  "social": {
+    "telegram": "https://t.me/your_channel",
+    "twitter": "https://x.com/your_handle",
+    "website": "",
+    "dexscreener": "",
+    "geckoterminal": "",
+    "github": ""
+  }
+}

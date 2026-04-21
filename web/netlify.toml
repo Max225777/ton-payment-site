@@ -1,0 +1,15 @@
+# Static-mode deploy on Netlify — uses web/public/config.json as config source.
+# If you need server-side ENV-backed /api/* endpoints on Netlify, move logic
+# into netlify/functions/ instead of relying on server.js.
+
+[build]
+  base    = "web"
+  publish = "public"
+  command = "echo 'static site — no build step'"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options         = "DENY"
+    X-Content-Type-Options  = "nosniff"
+    Referrer-Policy         = "strict-origin-when-cross-origin"

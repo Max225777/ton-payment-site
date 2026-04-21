@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ton-memecoin-promo-exchange
+    env: node
+    plan: free
+    rootDir: web
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: PORT
+        value: 10000
+      # Provide the rest via the Render dashboard (do not commit secrets):
+      # COIN_NAME, COIN_TICKER, COIN_LOGO_URL,
+      # ACCENT_COLOR, ACCENT_COLOR_2,
+      # BASE_RATE_USDT_PER_COIN, MIN_COIN_AMOUNT, MAX_COIN_AMOUNT,
+      # BONUS_TIERS_PCT, BONUS_DEFAULT_PCT,
+      # PROMO_DURATION_MINUTES, PROMO_HEADLINE, PROMO_SUBTEXT,
+      # DEPOSIT_ADDRESS_COIN, DEPOSIT_NETWORK,
+      # SOCIAL_TELEGRAM, SOCIAL_TWITTER, SOCIAL_WEBSITE,
+      # SOCIAL_DEXSCREENER, SOCIAL_GECKOTERMINAL, SOCIAL_GITHUB

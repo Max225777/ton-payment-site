@@ -28,10 +28,22 @@ const bonusPctForIndex = (cfg, idx) => {
   return cfg.bonus.defaultPct || 0;
 };
 
+async function fetchJson(url) {
+  try {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('json')) return null;
+    return await r.json();
+  } catch (_) { return null; }
+}
+
 async function loadConfig() {
-  const r = await fetch('/api/config');
-  if (!r.ok) throw new Error('Failed to load config');
-  state.cfg = await r.json();
+  // Prefer server-backed config if available (server.js running).
+  // Fall back to static ./config.json (GitHub Pages / any static host).
+  const cfg = (await fetchJson('./api/config')) || (await fetchJson('./config.json'));
+  if (!cfg) throw new Error('Failed to load config from /api/config or ./config.json');
+  state.cfg = cfg;
   applyBranding();
   renderTiers();
   renderSocials();
@@ -204,28 +216,26 @@ function recalcQuoteLocal() {
   $('swapBtn').disabled = false;
 }
 
-async function fetchQuote() {
+function onGetDeposit() {
+  const cfg = state.cfg;
   const amt = Number($('amountCoin').value);
+  if (!Number.isFinite(amt) || amt <= 0) return;
   const idx = getTxCount();
-  const r = await fetch('/api/quote', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amountCoin: amt, txIndex: idx }),
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({ error: 'Quote failed' }));
-    alert(err.error || 'Quote failed');
-    return null;
-  }
-  return r.json();
-}
-
-async function onGetDeposit() {
-  const q = await fetchQuote();
-  if (!q) return;
-  state.quote = q;
-  $('depositAmount').textContent = fmtCoin(q.amountCoin);
-  $('depositAddress').textContent = q.deposit.address || '(not configured)';
+  const pct = bonusPctForIndex(cfg, idx);
+  const base = amt * cfg.rate.baseUsdtPerCoin;
+  const bonus = base * (pct / 100);
+  const total = base + bonus;
+  state.quote = {
+    amountCoin: amt,
+    txIndex: idx,
+    bonusPct: pct,
+    baseUsdt: base,
+    bonusUsdt: bonus,
+    totalUsdt: total,
+    deposit: cfg.deposit,
+  };
+  $('depositAmount').textContent = fmtCoin(amt);
+  $('depositAddress').textContent = cfg.deposit.address || '(not configured)';
   $('depositBox').hidden = false;
   $('depositBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
