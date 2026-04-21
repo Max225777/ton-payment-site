@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Swap — Promo Exchange</title>
-<meta name="description" content="Swap your tokens to USDT with a limited-time promo boost." />
+<title>DUST Exchange — Swap DUST to USDT</title>
+<meta name="description" content="Community promo exchange: swap DUST to USDT on TON with a limited-time tiered bonus." />
 <link rel="icon" href="/logo.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -12,7 +12,10 @@
 <header class="topbar">
   <div class="brand">
     <img id="brandLogo" src="/logo.svg" alt="" />
-    <span id="brandName">YourCoin</span>
+    <span class="brand-text">
+      <span id="brandName">DUST</span>
+      <span class="community-badge">Community promo</span>
+    </span>
   </div>
   <nav class="topnav">
     <a href="#swap">Swap</a>
@@ -24,8 +27,9 @@
 
 <main class="page">
   <section class="hero">
-    <h1>Swap <span id="heroTicker">YCN</span> &rarr; USDT</h1>
-    <p class="muted">A limited-time promo with configurable bonus tiers per exchange.</p>
+    <h1>Swap <span id="heroTicker">DUST</span> &rarr; USDT</h1>
+    <p class="sub">A limited-time community promo with tiered bonuses on your first exchanges. Rates and bonuses are shown up-front — what you see is what you get.</p>
+    <div class="live-rate"><span class="dot"></span>Live rate: 1 <span class="rateTicker">DUST</span> = <b id="heroRate">–</b> USDT</div>
   </section>
 
   <div class="grid">
@@ -51,7 +55,7 @@
         </div>
       </label>
 
-      <div class="arrow">↓</div>
+      <div class="arrow"><span class="arrow-btn">↓</span></div>
 
       <label class="field">
         <span class="field-label">You receive</span>
@@ -146,8 +150,10 @@
     <nav class="socials" id="socials" aria-label="Social links"></nav>
   </div>
   <div class="footer-legal muted small">
-    Exchange rates and promo bonuses are configured by the site operator.
-    Always double-check the deposit address and network before sending funds.
+    Exchange rates and promo bonuses are configured by the site operator and are
+    shown in full before you confirm. Always double-check the deposit address
+    and network before sending funds.
+    <div class="unofficial">Unofficial community promo · Not investment advice</div>
   </div>
 </footer>
 

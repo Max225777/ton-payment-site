@@ -56,6 +56,8 @@ function applyBranding() {
   $('networkChip').textContent = deposit.network || 'TON';
   $('minCoin').textContent = rate.minCoin ? fmtCoin(rate.minCoin) : '–';
   $('maxCoin').textContent = rate.maxCoin ? fmtCoin(rate.maxCoin) : '∞';
+  const heroRate = $('heroRate');
+  if (heroRate) heroRate.textContent = rate.baseUsdtPerCoin.toLocaleString(undefined, { maximumFractionDigits: 8 });
   document.title = `Swap ${coin.ticker} → USDT`;
 }
 
